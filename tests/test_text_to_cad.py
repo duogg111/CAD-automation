@@ -14,6 +14,7 @@ from src.solidworks_features import (
     SW_STANDARD_ISO,
     SW_STANDARD_ISO_TAPPED_HOLE,
     _call_member,
+    _wrap_generated_interface,
     compute_four_corner_hole_centers_mm,
     compute_hole_centers_mm,
     get_box_top_perimeter_edges,
@@ -367,6 +368,56 @@ class TextToCADTests(unittest.TestCase):
             parse_description(
                 "Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3 tai (1.6, 20)"
             )
+
+
+    def test_hole_wizard_interface_uses_generated_early_bound_wrapper(self):
+        class FakeObject:
+            def __init__(self):
+                self._oleobj_ = object()
+
+        class FakeTypeInfo:
+            def GetContainingTypeLib(self):
+                return FakeTypeLibrary(), 0
+
+        class FakeTypeLibrary:
+            def GetLibAttr(self):
+                return ("lib-guid", 0, 0, 22, 0, 0)
+
+        class FakeTypeInfoSource:
+            def __init__(self):
+                self._oleobj_ = self
+            def GetTypeInfo(self):
+                return FakeTypeInfo()
+
+        class FakeInterface:
+            def __init__(self, ole_object):
+                self._oleobj_ = ole_object
+
+        class FakeInterfaceModule:
+            IWizardHoleFeatureData2 = FakeInterface
+
+        class FakeRootModule:
+            NamesToIIDMap = {"IWizardHoleFeatureData2": "interface-iid"}
+
+        class FakeGenCache:
+            def EnsureModule(self, guid, lcid, major, minor):
+                self.asserted_typelib = (guid, lcid, major, minor)
+                return FakeRootModule()
+            def GetModuleForCLSID(self, iid):
+                self.asserted_iid = iid
+                return FakeInterfaceModule()
+
+        raw = FakeObject()
+        cache = FakeGenCache()
+        typed = _wrap_generated_interface(
+            raw,
+            "IWizardHoleFeatureData2",
+            FakeTypeInfoSource(),
+            cache,
+        )
+        self.assertIs(typed._oleobj_, raw._oleobj_)
+        self.assertEqual(cache.asserted_typelib, ("lib-guid", 0, 22, 0))
+        self.assertEqual(cache.asserted_iid, "interface-iid")
 
 if __name__ == "__main__":
     unittest.main()
