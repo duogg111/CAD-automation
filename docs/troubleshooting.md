@@ -68,22 +68,36 @@ rebuild_result = model.ForceRebuild3(False)
 
 Lưu ý: đây là kết quả kiểm chứng của wrapper/môi trường hiện tại, không phải khẳng định mọi COM wrapper đều ánh xạ giống nhau.
 
-## 5. Lưu file thất bại
+## 5. Lưu file bằng `IModelDocExtension.SaveAs3`
 
-Dùng:
+Theo API Help, `SaveAs3` thuộc `model.Extension` và có 7 tham số:
+Name, Version, Options, ExportData, AdvancedSaveAsOptions, Errors, Warnings.
 
-```python
-save_result = model.SaveAs3(PART_PATH, 0, 1)
-```
-
-Nếu kết quả false, lấy chẩn đoán:
+Với pywin32 late binding, không truyền Python `None` cho các tham số COM object tùy chọn nếu SOLIDWORKS yêu cầu một COM null interface. Dùng `VT_DISPATCH` có con trỏ null:
 
 ```python
-print(model.GetSaveError())
-print(model.GetSaveWarning())
+null_object = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
 ```
 
-Sau khi lưu, kiểm tra thêm `os.path.isfile(PART_PATH)`.
+Ví dụ:
+
+```python
+errors = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
+warnings = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
+null_export_data = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+null_advanced_options = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+
+save_result = model.Extension.SaveAs3(
+    PART_PATH, 0, 1,
+    null_export_data, null_advanced_options,
+    errors, warnings,
+)
+print(save_result, errors.value, warnings.value)
+```
+
+Nếu kết quả false, các giá trị `errors.value` và `warnings.value` chứa bitmask từ SOLIDWORKS. Sau khi lưu, kiểm tra thêm `os.path.isfile(PART_PATH)`.
+
+**Triệu chứng đã gặp:** `pywintypes.com_error: (-2147352571, 'Type mismatch.', None, 4)` ở tham số thứ tư `ExportData`. Cần dùng COM null dispatch thay vì Python `None`. Áp dụng cách này cho cả hai tham số object tùy chọn trong lời gọi `SaveAs3`.
 
 ## 6. Quy tắc xử lý lỗi lần sau
 
