@@ -26,11 +26,28 @@ class CADPlan:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        requested = {feature.kind: feature for feature in self.features}
+        hole_feature = requested.get("holes")
+        hole_is_supported = (
+            hole_feature is not None
+            and hole_feature.parameters.get("layout") == "four_corners"
+            and int(hole_feature.parameters.get("count", 0)) == 4
+        )
         data["execution_status"] = {
-            "base_solid": "supported_by_existing_com_script",
-            "fillet": "supported_on_four_vertical_outer_edges",
-            "chamfer": "supported_on_four_top_perimeter_edges",
-            "holes": "supported_for_four_corner_through_holes",
+            "base_solid": "supported",
+            "fillet": (
+                "supported_on_four_vertical_outer_edges"
+                if "fillet" in requested else "not_requested"
+            ),
+            "chamfer": (
+                "supported_on_four_top_perimeter_edges"
+                if "chamfer" in requested else "not_requested"
+            ),
+            "holes": (
+                "supported_for_four_corner_through_holes"
+                if hole_is_supported
+                else ("preview_only" if hole_feature is not None else "not_requested")
+            ),
         }
         return data
 
@@ -152,10 +169,18 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
                 "Chi ho tro tao lo tu dong cho bo cuc 4 lo o bon goc; so lo khac moi chi duoc phan tich."
             )
 
-    if features:
+    requested_kinds = {feature.kind for feature in features}
+    if "chamfer" in requested_kinds:
         warnings.append(
-            "Chamfer duoc dat tren 4 canh bao quanh mat tren; Fillet tren 4 canh dung ngoai; "
-            "lo la lo xuyen Through All."
+            "Chamfer se duoc dat tren 4 canh bao quanh mat tren cua hop."
+        )
+    if "fillet" in requested_kinds:
+        warnings.append(
+            "Fillet se duoc dat tren 4 canh dung ngoai cua hop."
+        )
+    if "holes" in requested_kinds:
+        warnings.append(
+            "Bo cuc 4 lo tu dong la lo xuyen Through All; cac bo cuc khac chi hien preview."
         )
     return features, warnings
 
