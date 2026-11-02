@@ -20,11 +20,18 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 PART_PATH = os.path.join(OUTPUT_DIR, "My_First_Part.SLDPRT")
 
+try:
+    from src.solidworks_features import apply_vertical_edge_fillet
+except ModuleNotFoundError:
+    from solidworks_features import apply_vertical_edge_fillet
+
+
 def create_box(
     length: float = LENGTH,
     width: float = WIDTH,
     height: float = HEIGHT,
     output_path: str = PART_PATH,
+    fillet_radius_mm: float | None = None,
 ) -> str:
     """Create and save a rectangular prism; dimensions are in millimetres."""
     dimensions = {"length": float(length), "width": float(width), "height": float(height)}
@@ -87,6 +94,18 @@ def create_box(
         )
         if feature is None:
             raise RuntimeError("FeatureExtrusion2 returned None.")
+
+        if fillet_radius_mm is not None:
+            max_radius = min(dimensions["length"], dimensions["width"]) / 2.0
+            if float(fillet_radius_mm) <= 0 or float(fillet_radius_mm) >= max_radius:
+                raise ValueError(
+                    f"Fillet radius must be > 0 and < {max_radius:g} mm for this box."
+                )
+            apply_vertical_edge_fillet(
+                model,
+                radius_mm=float(fillet_radius_mm),
+                extrusion_depth_mm=dimensions["height"],
+            )
 
         model.ClearSelection2(True)
         model.ShowNamedView2("*Trimetric", 8)
