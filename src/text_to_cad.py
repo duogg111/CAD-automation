@@ -301,7 +301,9 @@ def parse_description(description: str) -> CADPlan:
             drill_diameter = diameter
         elif feature.kind == "tapped_holes":
             drill_diameter = float(feature.parameters["tap_drill_diameter_mm"])
-            diameter = drill_diameter
+            # Clearance is based on nominal thread diameter, not only the smaller
+            # tap-drill bore, so the thread envelope stays clear of edges/fillets.
+            diameter = float(feature.parameters["thread_diameter_mm"])
         else:
             continue
 
