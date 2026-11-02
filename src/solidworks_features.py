@@ -22,74 +22,129 @@ SW_STANDARD_ISO = 8
 SW_STANDARD_ISO_TAPPED_HOLE = 147
 
 
+SOLIDWORKS_TYPELIB_GUID = "{83A33D31-27C5-11CE-BFD4-00400513BB57}"
+
+
 def _wrap_generated_interface(
     obj: Any,
     interface_name: str,
-    type_info_source: Any,
     gencache_module: Any,
+    selecttlb_module: Any,
+    pythoncom_module: Any,
 ) -> Any:
-    """Wrap an IDispatch in its MakePy-generated interface class.
+    """Wrap a raw IDispatch using the registered SldWorks type library.
 
-    CreateDefinition returns an untyped/dynamic dispatch in some pywin32
-    configurations. Dynamic CDispatch cannot reliably write interface
-    properties such as IWizardHoleFeatureData2.ThreadDepth. Resolve the
-    interface IID from the SOLIDWORKS type library and instantiate the
-    generated wrapper; the wrapper performs QueryInterface automatically.
+    Do not ask the returned Hole Wizard definition or IFeatureManager for
+    IDispatch.GetTypeInfo(): some SOLIDWORKS COM proxies reject that call with
+    DISP_E_BADINDEX. Instead enumerate registered type libraries by the
+    stable sldworks.tlb LIBID, resolve the actual version from its file when
+    possible, load its MakePy module, and instantiate the generated interface
+    class with the raw IDispatch (which performs QueryInterface).
     """
     ole_object = getattr(obj, "_oleobj_", None)
-    source_ole = getattr(type_info_source, "_oleobj_", None)
-    if ole_object is None or source_ole is None:
-        raise TypeError(
-            "A live COM object and a SOLIDWORKS COM type-information source are required."
+    if ole_object is None:
+        raise TypeError("Expected a live SOLIDWORKS COM dispatch object.")
+
+    specs = [
+        spec
+        for spec in selecttlb_module.EnumTlbs()
+        if str(spec.clsid).strip("{}").upper()
+        == SOLIDWORKS_TYPELIB_GUID.strip("{}").upper()
+    ]
+    if not specs:
+        raise LookupError(
+            "The registered SldWorks type library was not found. "
+            f"Expected LIBID {SOLIDWORKS_TYPELIB_GUID}."
         )
 
-    type_info = source_ole.GetTypeInfo()
-    type_library, _ = type_info.GetContainingTypeLib()
-    library_attr = type_library.GetLibAttr()
-    library_module = gencache_module.EnsureModule(
-        library_attr[0],
-        library_attr[1],
-        library_attr[3],
-        library_attr[4],
+    # Prefer the highest registered SldWorks typelib version. Resolve() reads
+    # the actual version from the .tlb file and avoids interpreting registry
+    # version strings (which pywin32 documents as inconsistently decimal/hex).
+    resolved_specs = []
+    errors: list[str] = []
+    for spec in specs:
+        try:
+            if getattr(spec, "dll", None):
+                spec.Resolve()
+            else:
+                major_text = str(spec.major)
+                minor_text = str(spec.minor)
+                typelib = pythoncom_module.LoadRegTypeLib(
+                    spec.clsid,
+                    int(major_text, 16),
+                    int(minor_text, 16),
+                    int(spec.lcid),
+                )
+                spec.FromTypelib(typelib)
+            resolved_specs.append(spec)
+        except Exception as exc:
+            errors.append(f"{getattr(spec, 'ver_desc', spec.clsid)}: {exc}")
+
+    resolved_specs.sort(
+        key=lambda item: (int(item.major), int(item.minor)),
+        reverse=True,
     )
 
-    interface_iid = library_module.NamesToIIDMap.get(interface_name)
-    if interface_iid is None:
-        raise LookupError(
-            f"{interface_name} is not present in the generated SOLIDWORKS type library."
-        )
+    for spec in resolved_specs:
+        try:
+            library_module = gencache_module.EnsureModule(
+                spec.clsid,
+                int(spec.lcid),
+                int(spec.major),
+                int(spec.minor),
+            )
+            interface_iid = library_module.NamesToIIDMap.get(interface_name)
+            if interface_iid is None:
+                continue
 
-    interface_module = gencache_module.GetModuleForCLSID(interface_iid)
-    interface_class = getattr(interface_module, interface_name, None)
-    if interface_class is None:
-        raise LookupError(
-            f"MakePy generated no Python wrapper class for {interface_name}."
-        )
+            interface_module = gencache_module.GetModuleForCLSID(interface_iid)
+            interface_class = getattr(interface_module, interface_name, None)
+            if interface_class is None:
+                errors.append(
+                    f"Generated module has IID for {interface_name} but no wrapper class."
+                )
+                continue
 
-    return interface_class(ole_object)
+            return interface_class(ole_object)
+        except Exception as exc:
+            errors.append(
+                f"{getattr(spec, 'ver_desc', spec.clsid)} "
+                f"({spec.major}.{spec.minor}): {exc}"
+            )
+
+    detail = "; ".join(errors[-5:]) if errors else (
+        f"{interface_name} was not found in any registered SldWorks typelib."
+    )
+    raise RuntimeError(
+        f"Could not load the MakePy wrapper for {interface_name} from "
+        f"{SOLIDWORKS_TYPELIB_GUID}. Details: {detail}"
+    )
 
 
 def _early_bind_solidworks_interface(
     obj: Any,
     interface_name: str,
-    type_info_source: Any,
 ) -> Any:
-    """Bind a SOLIDWORKS dispatch to a generated interface wrapper or fail clearly."""
-    from win32com.client import gencache
+    """Bind a SOLIDWORKS dispatch to its generated MakePy interface wrapper."""
+    from win32com.client import gencache, selecttlb
+    import pythoncom
 
     try:
         return _wrap_generated_interface(
             obj,
             interface_name,
-            type_info_source,
             gencache,
+            selecttlb,
+            pythoncom,
         )
     except Exception as exc:
         raise RuntimeError(
-            f"Could not early-bind {interface_name}. Run "
-            "'python -m win32com.client.makepy' and select the "
-            "'SOLIDWORKS 2026 Type Library (22.0)', then retry."
+            f"Could not early-bind {interface_name} from the registered "
+            "SldWorks type library. Verify SOLIDWORKS 2026 is installed and "
+            "registered, then run 'python -m win32com.client.makepy' and "
+            "select the SOLIDWORKS 2026 Type Library."
         ) from exc
+
 
 
 def _call_member(obj: Any, name: str, *args: Any) -> Any:
@@ -526,7 +581,6 @@ def apply_iso_metric_tapped_holes(
         hole_data = _early_bind_solidworks_interface(
             hole_data,
             "IWizardHoleFeatureData2",
-            feature_manager,
         )
 
         # ISO metric straight-tap Hole Wizard, M3/M4 coarse series, Through All.
