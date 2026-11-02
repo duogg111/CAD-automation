@@ -7,7 +7,7 @@ from src.solidworks_features import (
     SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER,
     SW_FILLET_OVERFLOW_DEFAULT,
     SW_END_COND_THROUGH_ALL,
-    SW_END_THREAD_TYPE_THROUGH_ALL,
+    SW_WZD_THREAD_END_THROUGH_ALL,
     SW_COSMETIC_THREAD_WITH_CALLOUT,
     SW_FM_HOLE_WIZARD,
     SW_WZD_TAP,
@@ -56,7 +56,7 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER, 3)
         self.assertEqual(SW_FILLET_OVERFLOW_DEFAULT, 0)
         self.assertEqual(SW_END_COND_THROUGH_ALL, 1)
-        self.assertEqual(SW_END_THREAD_TYPE_THROUGH_ALL, 1)
+        self.assertEqual(SW_WZD_THREAD_END_THROUGH_ALL, 1)
         self.assertEqual(SW_COSMETIC_THREAD_WITH_CALLOUT, 1)
         self.assertEqual(SW_FM_HOLE_WIZARD, 25)
         self.assertEqual(SW_WZD_TAP, 4)
@@ -324,6 +324,21 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(status["chamfer"], "implemented_pending_SOLIDWORKS_verification")
         self.assertEqual(status["fillet"], "verified_on_user_SOLIDWORKS")
         self.assertEqual(status["holes"], "implemented_pending_SOLIDWORKS_verification")
+
+
+    def test_explicit_hole_positions_reject_overlapping_centers(self):
+        with self.assertRaises(ValueError):
+            compute_hole_centers_mm(
+                100,
+                60,
+                2,
+                "explicit_points",
+                explicit_points=[(20, 20), (22, 20)],
+                diameter_mm=3,
+            )
+
+    def test_tapped_hole_through_all_enum_is_explicit(self):
+        self.assertEqual(SW_WZD_THREAD_END_THROUGH_ALL, 1)
 
 if __name__ == "__main__":
     unittest.main()
