@@ -218,9 +218,9 @@ class TextToCADTests(unittest.TestCase):
             "vat canh 2 mm, bo goc R5, khoet 4 lo D3"
         )
         status = plan.to_dict()["execution_status"]
-        self.assertEqual(status["chamfer"], "supported_on_four_top_perimeter_edges")
-        self.assertEqual(status["fillet"], "supported_on_four_vertical_outer_edges")
-        self.assertEqual(status["holes"], "supported_for_four_corner_through_holes")
+        self.assertEqual(status["chamfer"], "implemented_pending_SOLIDWORKS_verification")
+        self.assertEqual(status["fillet"], "verified_on_user_SOLIDWORKS")
+        self.assertEqual(status["holes"], "implemented_pending_SOLIDWORKS_verification")
 
 if __name__ == "__main__":
     unittest.main()
