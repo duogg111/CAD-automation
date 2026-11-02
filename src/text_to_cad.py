@@ -36,15 +36,15 @@ class CADPlan:
         data["execution_status"] = {
             "base_solid": "supported",
             "fillet": (
-                "supported_on_four_vertical_outer_edges"
+                "verified_on_user_SOLIDWORKS"
                 if "fillet" in requested else "not_requested"
             ),
             "chamfer": (
-                "supported_on_four_top_perimeter_edges"
+                "implemented_pending_SOLIDWORKS_verification"
                 if "chamfer" in requested else "not_requested"
             ),
             "holes": (
-                "supported_for_four_corner_through_holes"
+                "implemented_pending_SOLIDWORKS_verification"
                 if hole_is_supported
                 else ("preview_only" if hole_feature is not None else "not_requested")
             ),
