@@ -68,7 +68,8 @@ def main() -> None:
                 f"Tapped holes: {hole_count} x ISO {tapped_hole_size} coarse thread, "
                 f"tap drill {hole_diameter:g} mm, pitch {float(params['pitch_mm']):g} mm."
             )
-            print("Thread representation: Hole Wizard tapped-hole/cosmetic thread, not helical solid geometry.")
+            print("Thread representation: native Hole Wizard tap feature, not helical solid geometry.")
+            print("Cosmetic thread display follows SOLIDWORKS defaults; this API setter is read-only.")
         else:
             hole_diameter = float(params["diameter_mm"])
             hole_clearance_diameter = hole_diameter
