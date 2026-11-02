@@ -1,6 +1,37 @@
 import unittest
 from src.text_to_cad import ParseError, parse_description
-from src.solidworks_features import is_vertical_extrusion_edge
+from src.solidworks_features import (
+    _call_member,
+    get_box_vertical_edges,
+    is_vertical_extrusion_edge,
+)
+
+class DummyVertex:
+    def __init__(self, point):
+        self.point = point
+    def GetPoint(self):
+        return self.point
+
+class DummyEdge:
+    def __init__(self, start, end):
+        self.start = DummyVertex(start)
+        self.end = DummyVertex(end)
+    def GetStartVertex(self):
+        return self.start
+    def GetEndVertex(self):
+        return self.end
+
+class DummyBody:
+    def __init__(self, edges):
+        self.edges = edges
+    def GetEdges(self):
+        return self.edges
+
+class DummyModel:
+    def __init__(self, bodies):
+        self.bodies = bodies
+    def GetBodies2(self, body_type, visible_only):
+        return self.bodies
 
 class TextToCADTests(unittest.TestCase):
     def test_labelled_dimensions_and_features(self):
@@ -14,6 +45,13 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(plan.features[0].parameters["target"], "four_vertical_outer_edges")
         self.assertEqual(plan.features[1].parameters["count"], 4)
         self.assertEqual(plan.features[1].parameters["diameter_mm"], 3.0)
+
+    def test_fillet_accented_phrase_and_decimal_comma(self):
+        plan = parse_description(
+            "Tạo hộp dài 100 mm rộng 60 mm cao 30 mm, bo tròn góc bán kính 2,5 mm"
+        )
+        self.assertEqual(plan.features[0].kind, "fillet")
+        self.assertEqual(plan.features[0].parameters["radius_mm"], 2.5)
 
     def test_dimension_tuple(self):
         plan = parse_description("Tao mot cai hop 100 x 60 x 30 mm")
@@ -54,6 +92,29 @@ class TextToCADTests(unittest.TestCase):
         self.assertFalse(
             is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.0, 0.0, 0.02), 30)
         )
+
+    def test_get_exactly_four_vertical_box_edges(self):
+        edges = [
+            DummyEdge((0.0, 0.0, 0.0), (0.0, 0.0, 0.03)),
+            DummyEdge((0.1, 0.0, 0.0), (0.1, 0.0, 0.03)),
+            DummyEdge((0.0, 0.06, 0.0), (0.0, 0.06, 0.03)),
+            DummyEdge((0.1, 0.06, 0.03), (0.1, 0.06, 0.0)),
+            DummyEdge((0.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
+        ]
+        model = DummyModel([DummyBody(edges)])
+        result = get_box_vertical_edges(model, 30)
+        self.assertEqual(len(result), 4)
+
+    def test_zero_argument_com_member_wrapper(self):
+        class Fake:
+            def function_member(self):
+                return "called"
+            @property
+            def property_member(self):
+                return "value"
+        fake = Fake()
+        self.assertEqual(_call_member(fake, "function_member"), "called")
+        self.assertEqual(_call_member(fake, "property_member"), "value")
 
 if __name__ == "__main__":
     unittest.main()
