@@ -12,7 +12,6 @@ SW_FILLET_OVERFLOW_DEFAULT = 0
 SW_END_COND_THROUGH_ALL = 1
 # IWizardHoleFeatureData2.ThreadEndCondition uses swWzdHoleThreadEndCondition_e.
 SW_WZD_THREAD_END_THROUGH_ALL = 1
-SW_COSMETIC_THREAD_WITH_CALLOUT = 1
 # swFeatureNameID_e.swFmHoleWzd
 SW_FM_HOLE_WIZARD = 25
 # swWzdGeneralHoleTypes_e.swWzdTap
@@ -497,8 +496,9 @@ def apply_iso_metric_tapped_holes(
 ) -> list[Any]:
     """Create ISO M3/M4 tapped Hole Wizard features at explicitly selected points.
 
-    The feature carries Hole Wizard thread data and cosmetic-thread annotation;
-    it does not create a true helical solid thread.
+    The feature carries native Hole Wizard tapped-hole data. It does not
+    create a true helical solid thread. CosmeticThreadType is read-only in
+    this API, so its display follows the SOLIDWORKS standard/template default.
     """
     size = str(size).upper()
     if size not in {"M3", "M4"}:
@@ -540,7 +540,9 @@ def apply_iso_metric_tapped_holes(
         # Request a full-depth thread as well as a through tap-drill bore.
         hole_data.ThreadDepth = height_m
         hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
-        hole_data.CosmeticThreadType = SW_COSMETIC_THREAD_WITH_CALLOUT
+        # CosmeticThreadType is get-only in the installed SOLIDWORKS API;
+        # assigning it is documented as not implemented. Leave display style
+        # to the SOLIDWORKS Hole Wizard/template default.
 
         model.ClearSelection2(True)
         selected = model.Extension.SelectByRay(
@@ -576,7 +578,12 @@ def apply_iso_metric_tapped_holes(
 
     print(
         f"ISO {size} tapped holes created: {len(created_features)}; "
-        "tap-drill dimensions are read from the SOLIDWORKS Hole Wizard standard."
+        "thread end condition: Through All; tap-drill dimensions come from "
+        "the SOLIDWORKS Hole Wizard standard."
+    )
+    print(
+        "Cosmetic thread callout display follows SOLIDWORKS defaults; "
+        "the API CosmeticThreadType setter is not implemented."
     )
     return created_features
 
