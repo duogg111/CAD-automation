@@ -182,8 +182,9 @@ def parse_description(description: str) -> CADPlan:
             f"Fillet R{fillet_radius:g} mm qua lon so voi mat day cua hop."
         )
     if chamfer_distance and (
-        chamfer_distance >= min(dimensions["length"], dimensions["width"]) / 2.0
-        or chamfer_distance >= dimensions["height"]
+        chamfer_distance >= min(
+            dimensions["length"], dimensions["width"], dimensions["height"]
+        ) / 2.0
     ):
         raise ParseError("Chamfer qua lon so voi kich thuoc hop.")
 
