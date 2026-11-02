@@ -25,12 +25,14 @@ try:
         apply_vertical_edge_fillet,
         apply_top_perimeter_chamfer,
         apply_four_corner_through_holes,
+        apply_iso_metric_tapped_holes,
     )
 except ModuleNotFoundError:
     from solidworks_features import (
         apply_vertical_edge_fillet,
         apply_top_perimeter_chamfer,
         apply_four_corner_through_holes,
+        apply_iso_metric_tapped_holes,
     )
 
 
@@ -44,6 +46,8 @@ def create_box(
     hole_count: int = 0,
     hole_diameter_mm: float | None = None,
     hole_edge_offset_mm: float | None = None,
+    hole_centers_mm: list[tuple[float, float]] | None = None,
+    tapped_hole_size: str | None = None,
 ) -> str:
     """Create and save a rectangular prism; dimensions are in millimetres."""
     dimensions = {"length": float(length), "width": float(width), "height": float(height)}
@@ -136,21 +140,31 @@ def create_box(
             )
 
         if hole_count:
-            if int(hole_count) != 4 or hole_diameter_mm is None or hole_edge_offset_mm is None:
+            if hole_centers_mm is None or len(hole_centers_mm) != int(hole_count):
                 raise ValueError(
-                    "Automatic hole creation currently requires exactly four holes, "
-                    "a diameter, and an edge offset."
+                    "Hole creation requires one validated XY center coordinate per hole."
                 )
-            apply_four_corner_through_holes(
-                model,
-                length_mm=dimensions["length"],
-                width_mm=dimensions["width"],
-                height_mm=dimensions["height"],
-                diameter_mm=float(hole_diameter_mm),
-                edge_offset_mm=float(hole_edge_offset_mm),
-                fillet_radius_mm=float(fillet_radius_mm or 0.0),
-                chamfer_distance_mm=float(chamfer_distance_mm or 0.0),
-            )
+            if tapped_hole_size is not None:
+                apply_iso_metric_tapped_holes(
+                    model,
+                    centers_mm=hole_centers_mm,
+                    height_mm=dimensions["height"],
+                    size=tapped_hole_size,
+                )
+            else:
+                if hole_diameter_mm is None:
+                    raise ValueError("A diameter is required for ordinary through-holes.")
+                apply_four_corner_through_holes(
+                    model,
+                    length_mm=dimensions["length"],
+                    width_mm=dimensions["width"],
+                    height_mm=dimensions["height"],
+                    diameter_mm=float(hole_diameter_mm),
+                    edge_offset_mm=hole_edge_offset_mm,
+                    fillet_radius_mm=float(fillet_radius_mm or 0.0),
+                    chamfer_distance_mm=float(chamfer_distance_mm or 0.0),
+                    centers_mm=hole_centers_mm,
+                )
 
         model.ClearSelection2(True)
         model.ShowNamedView2("*Trimetric", 8)
