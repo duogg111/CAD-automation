@@ -49,9 +49,9 @@ def _get_solid_bodies(model: Any) -> list[Any]:
     try:
         result = _call_member(model, "GetBodies2", 0, False)  # swSolidBody = 0
         return _as_items(result)
-    except Exception as direct_error:
+    except Exception:
         import win32com.client
-        last_error: Exception = direct_error
+        last_error: Exception | None = None
         for interface_name in ("PartDoc", "IPartDoc"):
             try:
                 part_doc = win32com.client.CastTo(model, interface_name)
@@ -120,7 +120,6 @@ def apply_vertical_edge_fillet(
                 f"SOLIDWORKS could not select vertical edge {index + 1}/4 for Fillet."
             )
 
-    # These enum values are loaded by the SOLIDWORKS Type Library MakePy wrapper.
     import win32com.client
     constants = win32com.client.constants
     try:
@@ -141,10 +140,15 @@ def apply_vertical_edge_fillet(
         model.ClearSelection2(True)
         raise RuntimeError("FeatureManager.CreateDefinition(swFmFillet) returned None.")
 
-    fillet_data.Initialize(constant_radius_type)
+    initialized = fillet_data.Initialize(constant_radius_type)
+    if not initialized:
+        model.ClearSelection2(True)
+        raise RuntimeError("ISimpleFilletFeatureData2.Initialize returned False.")
+
     fillet_data.DefaultRadius = radius_mm / 1000.0
     fillet_data.ConicTypeForCrossSectionProfile = circular_profile_type
-    fillet_data.PropagateToTangentFaces = False
+    # Do not set PropagateToTangentFaces here: that property belongs to the
+    # variable-fillet feature-data interface, not the simple-fillet interface.
 
     fillet_feature = feature_manager.CreateFeature(fillet_data)
     model.ClearSelection2(True)
@@ -152,6 +156,7 @@ def apply_vertical_edge_fillet(
         raise RuntimeError(
             f"SOLIDWORKS failed to create the constant-radius Fillet R{radius_mm:g}."
         )
+
     rebuild_result = model.ForceRebuild3(False)
     if rebuild_result is False:
         raise RuntimeError("SOLIDWORKS failed to rebuild the Fillet feature.")
