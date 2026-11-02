@@ -141,10 +141,6 @@ def create_box(
                     "Automatic hole creation currently requires exactly four holes, "
                     "a diameter, and an edge offset."
                 )
-            edge_clearance = max(
-                float(fillet_radius_mm or 0.0),
-                float(chamfer_distance_mm or 0.0),
-            )
             apply_four_corner_through_holes(
                 model,
                 length_mm=dimensions["length"],
@@ -152,7 +148,8 @@ def create_box(
                 height_mm=dimensions["height"],
                 diameter_mm=float(hole_diameter_mm),
                 edge_offset_mm=float(hole_edge_offset_mm),
-                edge_clearance_mm=edge_clearance,
+                fillet_radius_mm=float(fillet_radius_mm or 0.0),
+                chamfer_distance_mm=float(chamfer_distance_mm or 0.0),
             )
 
         model.ClearSelection2(True)
