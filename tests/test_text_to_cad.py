@@ -361,5 +361,12 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(plan.features[0].parameters["layout"], "single_center")
         self.assertTrue(any("tam mat tren" in warning for warning in plan.warnings))
 
+
+    def test_tapped_hole_clearance_uses_nominal_thread_diameter(self):
+        with self.assertRaises(ParseError):
+            parse_description(
+                "Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3 tai (1.6, 20)"
+            )
+
 if __name__ == "__main__":
     unittest.main()
