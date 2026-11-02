@@ -32,7 +32,7 @@ def create_box(
         if value <= 0:
             raise ValueError(f"{name} must be greater than zero; received {value}.")
     output_path = os.path.abspath(output_path)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(output_path) or os.getcwd(), exist_ok=True)
 
     pythoncom.CoInitialize()
     try:
