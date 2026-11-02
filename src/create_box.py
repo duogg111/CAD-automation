@@ -74,14 +74,60 @@ def create_box(
         if model is None:
             raise RuntimeError("NewDocument returned None.")
 
+        # Clear any template/default selection before selecting the sketch plane.
+        model.ClearSelection2(True)
         plane = model.FeatureByName("Front Plane")
         if plane is None:
             raise RuntimeError(
-                "Front Plane was not found. Check the template plane name "
-                "or SOLIDWORKS display language."
+                "Front Plane was not found by its default English name. "
+                "Check the Part template and SOLIDWORKS display language."
             )
-        if not plane.Select2(False, 0):
-            raise RuntimeError("Could not select Front Plane.")
+
+        # Some SOLIDWORKS templates expose the plane Feature object but reject
+        # IFeature.Select2. Try alternate selection methods before failing.
+        selected_plane = False
+        selection_errors = []
+        try:
+            selected_plane = bool(plane.Select2(False, 0))
+        except Exception as exc:
+            selection_errors.append(f"Feature.Select2: {exc}")
+
+        if not selected_plane:
+            model.ClearSelection2(True)
+            try:
+                selected_plane = bool(plane.Select(False))
+            except Exception as exc:
+                selection_errors.append(f"Feature.Select: {exc}")
+
+        if not selected_plane:
+            model.ClearSelection2(True)
+            try:
+                plane_name = str(plane.Name)
+                null_callout = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
+                selected_plane = bool(
+                    model.Extension.SelectByID2(
+                        plane_name, "PLANE", 0.0, 0.0, 0.0,
+                        False, 0, null_callout, 0,
+                    )
+                )
+            except Exception as exc:
+                selection_errors.append(f"Extension.SelectByID2: {exc}")
+
+        if not selected_plane:
+            try:
+                plane_name = str(plane.Name)
+            except Exception:
+                plane_name = "<unavailable>"
+            try:
+                plane_type = str(plane.GetTypeName2())
+            except Exception:
+                plane_type = "<unavailable>"
+            raise RuntimeError(
+                "Could not select the sketch plane. "
+                f"Feature name={plane_name!r}, type={plane_type!r}. "
+                "Check that the default Part template has an unsuppressed Front Plane. "
+                + " | ".join(selection_errors)
+            )
 
         model.SketchManager.InsertSketch(True)
         sketch_segment = model.SketchManager.CreateCornerRectangle(
