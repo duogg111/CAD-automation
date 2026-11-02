@@ -3,6 +3,16 @@ from __future__ import annotations
 import types
 from typing import Any
 
+# SOLIDWORKS SwConst enum values.
+# swFeatureNameID_e.swFmFillet = 1 (swFmChamfer = 0)
+# swSimpleFilletType_e.swConstRadiusFillet = 0
+# swFeatureFilletProfileType_e.swFeatureFilletCircular = 0
+# These values are used directly because pywin32.constants may not include
+# the separate SwConst type library even when the SldWorks typelib is generated.
+SW_FM_FILLET = 1
+SW_CONST_RADIUS_FILLET = 0
+SW_FEATURE_FILLET_CIRCULAR = 0
+
 def _call_member(obj: Any, name: str, *args: Any) -> Any:
     """Read zero-argument COM members as properties; call only real Python methods.
 
@@ -125,33 +135,19 @@ def apply_vertical_edge_fillet(
                 f"SOLIDWORKS could not select vertical edge {index + 1}/4 for Fillet."
             )
 
-    import win32com.client
-    constants = win32com.client.constants
-    try:
-        fillet_definition_id = int(constants.swFmFillet)
-        constant_radius_type = int(constants.swConstRadiusFillet)
-        circular_profile_type = int(constants.swFeatureFilletCircular)
-    except Exception as exc:
-        model.ClearSelection2(True)
-        raise RuntimeError(
-            "SOLIDWORKS API constants are unavailable. Run "
-            "'python -m win32com.client.makepy' and select "
-            "'SOLIDWORKS 2026 Type Library (22.0)'."
-        ) from exc
-
     feature_manager = model.FeatureManager
-    fillet_data = feature_manager.CreateDefinition(fillet_definition_id)
+    fillet_data = feature_manager.CreateDefinition(SW_FM_FILLET)
     if fillet_data is None:
         model.ClearSelection2(True)
         raise RuntimeError("FeatureManager.CreateDefinition(swFmFillet) returned None.")
 
-    initialized = fillet_data.Initialize(constant_radius_type)
+    initialized = fillet_data.Initialize(SW_CONST_RADIUS_FILLET)
     if not initialized:
         model.ClearSelection2(True)
         raise RuntimeError("ISimpleFilletFeatureData2.Initialize returned False.")
 
     fillet_data.DefaultRadius = radius_mm / 1000.0
-    fillet_data.ConicTypeForCrossSectionProfile = circular_profile_type
+    fillet_data.ConicTypeForCrossSectionProfile = SW_FEATURE_FILLET_CIRCULAR
 
     fillet_feature = feature_manager.CreateFeature(fillet_data)
     model.ClearSelection2(True)
