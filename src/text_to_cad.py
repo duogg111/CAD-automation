@@ -107,7 +107,7 @@ def _parse_xy_points(text: str) -> list[tuple[float, float]]:
         return points
 
     xy_match = re.search(
-        rf"\bx\s*[:=]?\s*{NUMBER}\s*(?:,|;|\s+)\s*y\s*[:=]?\s*{NUMBER}\b",
+        rf"\bx\s*[:=]?\s*{NUMBER}\s*(?:mm\s*)?(?:,|;|\bva\b|\s+)\s*y\s*[:=]?\s*{NUMBER}\s*(?:mm)?\b",
         text,
     )
     if xy_match:
@@ -194,7 +194,7 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
 
     # ISO coarse metric tapped holes, M3 and M4 only in this milestone.
     tap_match = re.search(
-        r"(?:(\d+)\s*lo\s*)?(?:(?:lo\s*)?ren\s*|(?:ta\s*ro|taro|tap)\s*)?m\s*([34])(?:\s*x\s*[\d,.]+)?\b",
+        r"(?:(\d+)\s*lo\s*)?(?:(?:lo\s*)?ren\s*|(?:ta\s*ro|taro|tap)\s*)?m\s*([34])(?:\s*x\s*([\d,.]+))?\b",
         text,
     )
     has_tap_context = bool(re.search(r"\b(lo|ren|ta\s*ro|taro|tap)\b", text))
@@ -214,6 +214,12 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
             raise ParseError("So luong lo ren phai lon hon 0.")
         layout = _parse_hole_layout(text, count, warnings)
         spec = TAP_SPECS[size]
+        specified_pitch = tap_match.group(3)
+        if specified_pitch is not None and abs(_number(specified_pitch) - spec["pitch_mm"]) > 1e-6:
+            raise ParseError(
+                f"{size} dang ho tro buoc ren ISO coarse {spec['pitch_mm']:g} mm; "
+                "buoc ren khac chua duoc ho tro."
+            )
         features.append(
             Feature(
                 "tapped_holes",
