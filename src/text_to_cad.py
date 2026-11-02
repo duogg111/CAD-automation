@@ -160,6 +160,9 @@ def _parse_hole_layout(
         }
 
     if count == 1:
+        warnings.append(
+            "Chua ghi toa do cho lo don: vi tri se duoc de xuat tai tam mat tren."
+        )
         return {"layout": "single_center"}
 
     return {"layout": "unspecified"}
