@@ -591,8 +591,10 @@ def apply_iso_metric_tapped_holes(
             size,
             SW_END_COND_THROUGH_ALL,
         )
-        # Request a full-depth thread as well as a through tap-drill bore.
-        hole_data.ThreadDepth = height_m
+        # The tap-drill bore is Through All (InitializeHole above), and the
+        # thread itself is also Through All. Do not assign ThreadDepth here:
+        # SOLIDWORKS 2026 can raise RPC_E_SERVERFAULT for that redundant setter
+        # when the thread end condition is Through All.
         hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
         # CosmeticThreadType is get-only in the installed SOLIDWORKS API;
         # assigning it is documented as not implemented. Leave display style
