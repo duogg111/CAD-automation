@@ -1,8 +1,4 @@
-"""Parse a small, explicit subset of Vietnamese part descriptions.
-
-This module creates a validated CAD plan. SOLIDWORKS geometry execution is
-kept separate so unsupported or ambiguous features cannot silently create a wrong model.
-"""
+"""Parse Vietnamese rectangular-prism descriptions into a validated CAD plan."""
 from __future__ import annotations
 import json
 import re
@@ -33,8 +29,8 @@ class CADPlan:
         data["execution_status"] = {
             "base_solid": "supported_by_existing_com_script",
             "fillet": "supported_on_four_vertical_outer_edges",
-            "chamfer": "preview_only",
-            "holes": "preview_only",
+            "chamfer": "supported_on_four_top_perimeter_edges",
+            "holes": "supported_for_four_corner_through_holes",
         }
         return data
 
@@ -83,6 +79,7 @@ def _parse_dimensions(text: str) -> dict[str, float]:
 def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
     features: list[Feature] = []
     warnings: list[str] = []
+
     fillet = re.search(
         rf"\bbo\s*(?:tron\s*)?(?:goc|canh)?\s*(?:ban kinh\s*)?(?:r\s*)?{NUMBER}\s*(?:mm)?\b",
         text,
@@ -96,14 +93,16 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
         )
 
     chamfer = re.search(
-        rf"\b(?:vat canh|chamfer)\s*(?:kich thuoc\s*)?{NUMBER}\s*(?:mm)?\b",
+        rf"\b(?:vat\s*(?:canh|mep(?:\s+tren)?)|chamfer)\s*(?:kich thuoc\s*)?{NUMBER}\s*(?:mm)?\b",
         text,
     )
     if chamfer:
         distance = _number(chamfer.group(1))
         if distance <= 0:
             raise ParseError("Kich thuoc Chamfer phai lon hon 0 mm.")
-        features.append(Feature("chamfer", {"distance_mm": distance}))
+        features.append(
+            Feature("chamfer", {"distance_mm": distance, "target": "four_top_perimeter_edges"})
+        )
 
     holes = re.search(
         rf"(?:\b(\d+)\s*lo\b|\blo\s*(\d+)\b).*?"
@@ -115,12 +114,48 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
         diameter = _number(holes.group(3))
         if count <= 0 or diameter <= 0:
             raise ParseError("So luong lo va duong kinh phai lon hon 0.")
-        features.append(Feature("holes", {"count": count, "diameter_mm": diameter}))
+        offset_match = re.search(
+            rf"\bcach\s+(?:mep|canh)\s*{NUMBER}\s*(?:mm)?\b",
+            text,
+        )
+        offset_explicit = offset_match is not None
+        edge_offset = _number(offset_match.group(1)) if offset_match else 10.0
+        if count == 4:
+            features.append(
+                Feature(
+                    "holes",
+                    {
+                        "count": count,
+                        "diameter_mm": diameter,
+                        "layout": "four_corners",
+                        "edge_offset_mm": edge_offset,
+                        "offset_was_defaulted": not offset_explicit,
+                    },
+                )
+            )
+            if not offset_explicit:
+                warnings.append(
+                    "Chua ghi khoang cach lo den mep: tam 4 lo duoc dat cach moi mep 10 mm theo mac dinh."
+                )
+        else:
+            features.append(
+                Feature(
+                    "holes",
+                    {
+                        "count": count,
+                        "diameter_mm": diameter,
+                        "layout": "unspecified",
+                    },
+                )
+            )
+            warnings.append(
+                "Chi ho tro tao lo tu dong cho bo cuc 4 lo o bon goc; so lo khac moi chi duoc phan tich."
+            )
 
-    unsupported = [feature.kind for feature in features if feature.kind != "fillet"]
-    if unsupported:
+    if features:
         warnings.append(
-            "Chamfer va holes moi chi duoc phan tich; chua duoc gui len SOLIDWORKS."
+            "Chamfer duoc dat tren 4 canh bao quanh mat tren; Fillet tren 4 canh dung ngoai; "
+            "lo la lo xuyen Through All."
         )
     return features, warnings
 
@@ -134,16 +169,43 @@ def parse_description(description: str) -> CADPlan:
     dimensions = _parse_dimensions(text)
     features, warnings = _parse_features(text)
 
+    fillet_radius = next(
+        (float(f.parameters["radius_mm"]) for f in features if f.kind == "fillet"),
+        0.0,
+    )
+    chamfer_distance = next(
+        (float(f.parameters["distance_mm"]) for f in features if f.kind == "chamfer"),
+        0.0,
+    )
+    if fillet_radius >= min(dimensions["length"], dimensions["width"]) / 2.0:
+        raise ParseError(
+            f"Fillet R{fillet_radius:g} mm qua lon so voi mat day cua hop."
+        )
+    if chamfer_distance and (
+        chamfer_distance >= min(dimensions["length"], dimensions["width"]) / 2.0
+        or chamfer_distance >= dimensions["height"]
+    ):
+        raise ParseError("Chamfer qua lon so voi kich thuoc hop.")
+
     for feature in features:
-        if feature.kind == "fillet":
-            radius = float(feature.parameters["radius_mm"])
-            max_radius = min(dimensions["length"], dimensions["width"]) / 2.0
-            if radius >= max_radius:
+        if feature.kind == "holes" and feature.parameters.get("layout") == "four_corners":
+            diameter = float(feature.parameters["diameter_mm"])
+            offset = float(feature.parameters["edge_offset_mm"])
+            required_offset = diameter / 2.0 + max(fillet_radius, chamfer_distance)
+            if offset <= required_offset:
                 raise ParseError(
-                    f"Fillet R{radius:g} mm qua lon. "
-                    f"Voi hop nay, ban kinh phai nho hon {max_radius:g} mm "
-                    "de bo bon canh dung."
+                    f"Khoang cach tam lo den mep phai lon hon {required_offset:g} mm "
+                    "de tranh giao voi lo va cac feature bo/vat canh."
                 )
+            if (
+                dimensions["length"] - 2.0 * offset <= diameter
+                or dimensions["width"] - 2.0 * offset <= diameter
+            ):
+                raise ParseError(
+                    "4 lo khong vua voi mat tren. Hay giam duong kinh/khoang cach mep "
+                    "hoac tang kich thuoc hop."
+                )
+
     return CADPlan(description.strip(), "rectangular_prism", dimensions, features, warnings)
 
 def plan_as_json(description: str) -> str:
