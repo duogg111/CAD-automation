@@ -2,6 +2,15 @@
 from __future__ import annotations
 from typing import Any
 
+def _call_member(obj: Any, name: str, *args: Any) -> Any:
+    """Call a pywin32 method whether exposed callable or auto-invoked (zero args)."""
+    member = getattr(obj, name)
+    if callable(member):
+        return member(*args)
+    if args:
+        raise TypeError(f"COM member {name} is not callable but arguments were supplied.")
+    return member
+
 def _as_items(value: Any) -> list[Any]:
     """Convert a COM SAFEARRAY result to a Python list."""
     if value is None:
@@ -16,7 +25,7 @@ def _as_items(value: Any) -> list[Any]:
 def _vertex_point(vertex: Any) -> tuple[float, float, float]:
     if vertex is None:
         raise ValueError("An edge does not have two finite endpoint vertices.")
-    point = vertex.GetPoint()
+    point = _call_member(vertex, "GetPoint")
     if point is None or len(point) < 3:
         raise ValueError("SOLIDWORKS returned an invalid vertex point.")
     return (float(point[0]), float(point[1]), float(point[2]))
@@ -35,19 +44,39 @@ def is_vertical_extrusion_edge(
     tol = max(float(tolerance_m), expected_depth_m * 1e-6)
     return dx <= tol and dy <= tol and abs(dz - expected_depth_m) <= tol
 
+def _get_solid_bodies(model: Any) -> list[Any]:
+    """Get solid bodies, explicitly casting to IPartDoc if needed by COM dispatch."""
+    try:
+        result = _call_member(model, "GetBodies2", 0, False)  # swSolidBody = 0
+        return _as_items(result)
+    except Exception as direct_error:
+        import win32com.client
+        last_error: Exception = direct_error
+        for interface_name in ("PartDoc", "IPartDoc"):
+            try:
+                part_doc = win32com.client.CastTo(model, interface_name)
+                result = _call_member(part_doc, "GetBodies2", 0, False)
+                return _as_items(result)
+            except Exception as cast_error:
+                last_error = cast_error
+        raise RuntimeError(
+            "Could not access IPartDoc.GetBodies2 through the current COM wrapper. "
+            "Check that the SOLIDWORKS Type Library MakePy wrapper is generated."
+        ) from last_error
+
 def get_box_vertical_edges(model: Any, extrusion_depth_mm: float) -> list[Any]:
     """Find the four vertical corner edges of the starter's single solid body."""
-    bodies = _as_items(model.GetBodies2(0, False))  # swSolidBody = 0
+    bodies = _get_solid_bodies(model)
     if len(bodies) != 1:
         raise RuntimeError(
             "Expected exactly one solid body before Fillet, "
             f"but SOLIDWORKS returned {len(bodies)}."
         )
-    body_edges = _as_items(bodies[0].GetEdges())
+    body_edges = _as_items(_call_member(bodies[0], "GetEdges"))
     vertical_edges: list[Any] = []
     for edge in body_edges:
-        start_vertex = edge.GetStartVertex()
-        end_vertex = edge.GetEndVertex()
+        start_vertex = _call_member(edge, "GetStartVertex")
+        end_vertex = _call_member(edge, "GetEndVertex")
         if start_vertex is None or end_vertex is None:
             continue
         if is_vertical_extrusion_edge(
@@ -80,7 +109,7 @@ def apply_vertical_edge_fillet(
     edges = get_box_vertical_edges(model, extrusion_depth_mm)
     model.ClearSelection2(True)
     selection_manager = model.SelectionManager
-    selection_data = selection_manager.CreateSelectData()
+    selection_data = _call_member(selection_manager, "CreateSelectData")
     selection_data.Mark = 1
 
     for index, edge in enumerate(edges):
