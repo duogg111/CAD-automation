@@ -36,11 +36,11 @@ Mở PowerShell tại thư mục dự án:
     python -m pip install --upgrade pip
     pip install -r requirements.txt
 
-Nếu cần tạo COM wrapper/constants, chạy:
+Nếu cần tạo COM interface wrapper để có type information/casting, chạy:
 
     python -m win32com.client.makepy
 
-Chọn SOLIDWORKS 2026 Type Library (22.0).
+Chọn SOLIDWORKS 2026 Type Library (22.0). Enum values dùng cho Fillet hiện được định nghĩa trực tiếp trong helper để không phụ thuộc win32com.client.constants.
 
 ## Text-to-CAD
 
