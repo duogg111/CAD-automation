@@ -4,12 +4,12 @@
 
 1. User enters a Vietnamese description.
 2. The parser validates the rectangular-prism dimensions and feature parameters.
-3. The program displays the planned feature targets and any placement defaults.
+3. The program displays the planned feature targets, hole centers, defaults and warnings.
 4. The user confirms.
-5. SOLIDWORKS creates the base solid, optional top Chamfer, vertical Fillet, and optional four-hole Cut-Extrude.
+5. SOLIDWORKS creates the base solid, optional top Chamfer, vertical Fillet, and requested ordinary/tapped holes.
 6. The model is rebuilt and saved as SLDPRT.
 
-## Example descriptions
+## Supported descriptions
 
 Base box:
 
@@ -27,49 +27,71 @@ Four through-holes, default edge offset 10 mm:
 
     Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3
 
-Four through-holes with explicit edge offset:
+Single hole at explicit XY coordinates:
 
-    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3 cach mep 8 mm
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 Y=15
 
-Combined example:
+Two holes centered 40 mm apart along X, symmetric about the face center:
 
-    Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 cach nhau 40 mm
 
-## Feature definitions
+Two holes along Y:
 
-### Chamfer
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 cach nhau 30 mm theo chieu rong
 
-- The phrase "vat canh 2 mm" is defined in this starter as a symmetric 2 mm chamfer on the four edges surrounding the top planar face.
-- The Chamfer is created before vertical-corner Fillet.
-- The code uses the SOLIDWORKS simple fillet/chamfer feature data object. For an offset-face chamfer, SOLIDWORKS documents swConstRadiusFillet initialization, swFeatureFilletConicRhoZeroChamfer profile, DefaultRadius as the symmetric offset distance, and OverflowType.
-- Chamfer distance must be less than half the smallest of length, width, and height.
+Explicit multiple coordinates:
 
-### Fillet
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 tai (20, 15) va (80, 15)
 
-- "bo goc R5" means a constant-radius R5 fillet on the four vertical outside corner edges.
-- It does not mean all twelve edges.
-- Edge discovery accepts shortened vertical edges so that it still works after the top perimeter Chamfer.
-- Radius must be positive and less than half the smaller footprint dimension.
+ISO tapped holes:
 
-### Four through-holes
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, tao 2 lo ren M3 cach nhau 40 mm
 
-- Automatic hole creation currently supports exactly four holes.
-- The holes are placed symmetrically at (offset, offset), (length-offset, offset), (length-offset, width-offset), and (offset, width-offset) in the top sketch plane.
-- Each hole is a Through All cut.
-- If no edge offset is stated, the planner proposes 10 mm and displays a warning. The requested diameter, Chamfer and round-corner Fillet are checked against this offset. If 10 mm is insufficient, the planner rejects the request and asks for a larger explicit offset, for example "cach mep 12 mm".
-- The center offset must clear the hole radius and the larger of the requested Fillet radius or Chamfer distance.
-- Other counts/layouts are parsed but stay preview-only until positioning rules are implemented.
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, tao 1 lo ren M4 tai (20, 20)
+
+## Hole placement rules
+
+### Coordinate system
+
+- XY coordinates are measured in millimetres from the lower-left origin of the top face.
+- X follows the length dimension; Y follows the width dimension.
+- Coordinates are shown in the plan and validated before calling SOLIDWORKS.
+
+### Automatic layouts
+
+- four_corners: for four holes, the parser uses the specified edge offset or proposes 10 mm and displays a warning.
+- center_to_center_x: for two holes, places them symmetrically about the face center, separated along X; default pattern axis is X.
+- center_to_center_y: same but along Y when the description includes "theo chieu rong".
+- single_center: one hole at the center of the top face.
+- explicit_points: one coordinate pair per hole, e.g. (20, 15) and (80, 15).
+- Other counts/layouts remain preview-only until a deterministic placement rule is provided.
+
+### Ordinary through-holes
+
+Ordinary round holes are drawn together in one sketch on the top face and cut with FeatureCut4 using the Through All end condition. The planner checks hole diameter, edge clearance, Chamfer clearance and rounded-corner Fillet clearance.
+
+### ISO M3/M4 tapped holes
+
+- The supported tap sizes are ISO metric coarse M3 and M4.
+- M3: nominal thread diameter 3 mm, coarse pitch 0.5 mm, standard tap drill 2.5 mm.
+- M4: nominal thread diameter 4 mm, coarse pitch 0.7 mm, standard tap drill 3.3 mm.
+- The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, selects the top-face placement point with SelectByRay, then calls CreateFeature.
+- Thread depth and thread end condition are set to the part's Through All depth. Cosmetic thread display with callout is requested.
+- This is a Hole Wizard tapped-hole/cosmetic-thread feature, not a modeled helical solid thread. For true 3D thread geometry, a separate Thread feature workflow would be required.
 
 ## SOLIDWORKS API workflow
 
 - Base: SketchManager.CreateCornerRectangle and FeatureExtrusion2.
-- Chamfer: select the four top perimeter edges with mark 1; create the simple fillet/chamfer feature data using CreateDefinition(swFmFillet), Initialize(swConstRadiusFillet), set the zero-rho chamfer profile, offset distance and overflow type; then CreateFeature.
+- Chamfer: select top perimeter edges, create simple fillet/chamfer feature data, then CreateFeature.
 - Fillet: select the four vertical edges and create a constant-radius simple fillet feature.
-- Holes: select the top planar face by a point at its center, create four circles in one sketch using CreateCircleByRadius, then use FeatureCut4 with swEndCondThroughAll.
+- Ordinary holes: select the top face, create circles in one sketch, then FeatureCut4 with swEndCondThroughAll.
+- Tapped holes: IFeatureManager.CreateDefinition(swFmHoleWzd) → IWizardHoleFeatureData2.InitializeHole → set thread depth/end condition/cosmetic thread properties → select placement point with IModelDocExtension.SelectByRay → IFeatureManager.CreateFeature.
 
 ## Run and test
 
-    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm"
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 cach nhau 40 mm"
+
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, tao 2 lo ren M3 cach nhau 40 mm"
 
 Run parser and geometry-plan tests without SOLIDWORKS:
 
@@ -77,4 +99,4 @@ Run parser and geometry-plan tests without SOLIDWORKS:
 
 ## Verification boundary
 
-The parser, edge classifiers and hole-layout calculations have unit tests. Fillet was confirmed on the user’s SOLIDWORKS session. The newly added Chamfer, top-face selection and four-hole Cut-Extrude COM operations still require verification in the user’s SOLIDWORKS 2026 session; they have not been executed from this development environment.
+The parser, XY placement calculations and existing Fillet workflow have test coverage and prior user-session confirmation where noted. The new coordinate/pitch Cut-Extrude variants and the ISO M3/M4 Hole Wizard COM workflow still require verification on the user's SOLIDWORKS 2026 installation.
