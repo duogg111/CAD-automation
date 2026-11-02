@@ -26,7 +26,6 @@ The project fix is to bind the raw dispatch to the generated MakePy interface be
     hole_data = _early_bind_solidworks_interface(
         hole_data,
         "IWizardHoleFeatureData2",
-        feature_manager,
     )
     hole_data.InitializeHole(...)
     hole_data.ThreadDepth = height_m
