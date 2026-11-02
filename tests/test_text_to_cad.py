@@ -1,6 +1,9 @@
 import unittest
 from src.text_to_cad import ParseError, parse_description
 from src.solidworks_features import (
+    SW_FM_FILLET,
+    SW_CONST_RADIUS_FILLET,
+    SW_FEATURE_FILLET_CIRCULAR,
     _call_member,
     get_box_vertical_edges,
     is_vertical_extrusion_edge,
@@ -34,6 +37,11 @@ class DummyModel:
         return self.bodies
 
 class TextToCADTests(unittest.TestCase):
+    def test_fillet_enum_values(self):
+        self.assertEqual(SW_FM_FILLET, 1)
+        self.assertEqual(SW_CONST_RADIUS_FILLET, 0)
+        self.assertEqual(SW_FEATURE_FILLET_CIRCULAR, 0)
+
     def test_labelled_dimensions_and_features(self):
         plan = parse_description(
             "Tao hop dai 100 mm, rong 60 mm, cao 30 mm, "
@@ -115,7 +123,6 @@ class TextToCADTests(unittest.TestCase):
         fake = Fake()
         self.assertEqual(_call_member(fake, "function_member"), "called")
         self.assertEqual(_call_member(fake, "property_member"), "value")
-
 
     def test_callable_dispatch_value_is_not_invoked(self):
         class FakeDispatchValue:
