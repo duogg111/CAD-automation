@@ -42,6 +42,8 @@ The implementation uses the current simple fillet feature-data workflow:
 5. Initialize with swConstRadiusFillet, set the radius and circular profile, then call IFeatureManager::CreateFeature.
 6. Rebuild and save the part.
 
+To avoid a missing win32com.client.constants entry, the code defines the three SwConst enum values used here locally: swFmFillet = 1, swConstRadiusFillet = 0, and swFeatureFilletCircular = 0. These are enum identifiers, not feature parameters.
+
 FeatureFillet3 is not used because SOLIDWORKS documents it as obsolete for constant-radius fillets.
 
 ## Run
