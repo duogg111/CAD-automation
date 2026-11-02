@@ -10,11 +10,16 @@ SW_FEATURE_FILLET_CIRCULAR = 0
 SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER = 3
 SW_FILLET_OVERFLOW_DEFAULT = 0
 SW_END_COND_THROUGH_ALL = 1
-SW_END_THREAD_TYPE_THROUGH_ALL = 1
+# IWizardHoleFeatureData2.ThreadEndCondition uses swWzdHoleThreadEndCondition_e.
+SW_WZD_THREAD_END_THROUGH_ALL = 1
 SW_COSMETIC_THREAD_WITH_CALLOUT = 1
+# swFeatureNameID_e.swFmHoleWzd
 SW_FM_HOLE_WIZARD = 25
+# swWzdGeneralHoleTypes_e.swWzdTap
 SW_WZD_TAP = 4
+# swWzdHoleStandards_e.swStandardISO
 SW_STANDARD_ISO = 8
+# swWzdHoleStandardFastenerTypes_e.swStandardISOTappedHole
 SW_STANDARD_ISO_TAPPED_HOLE = 147
 
 
@@ -375,7 +380,16 @@ def compute_hole_centers_mm(
 
     hole_radius = diameter / 2.0
     safety_margin = 0.25
-    for x, y in centers:
+    minimum_center_spacing = diameter + safety_margin
+    for index, (x, y) in enumerate(centers):
+        for other_x, other_y in centers[index + 1:]:
+            center_spacing = ((x - other_x) ** 2 + (y - other_y) ** 2) ** 0.5
+            if center_spacing <= minimum_center_spacing:
+                raise ValueError(
+                    "Two holes overlap or are too close: center spacing "
+                    f"{center_spacing:g} mm must exceed {minimum_center_spacing:g} mm."
+                )
+
         if not (0.0 < x < length and 0.0 < y < width):
             raise ValueError(f"Hole center ({x:g}, {y:g}) is outside the top face.")
         edge_clearance = min(x, length - x, y, width - y)
@@ -446,7 +460,7 @@ def apply_iso_metric_tapped_holes(
         )
         # Request a full-depth thread as well as a through tap-drill bore.
         hole_data.ThreadDepth = height_m
-        hole_data.ThreadEndCondition = SW_END_THREAD_TYPE_THROUGH_ALL
+        hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
         hole_data.CosmeticThreadType = SW_COSMETIC_THREAD_WITH_CALLOUT
 
         model.ClearSelection2(True)
@@ -598,7 +612,9 @@ def apply_four_corner_through_holes(
         raise RuntimeError("SOLIDWORKS failed to rebuild the hole Cut-Extrude feature.")
 
     print(
-        f"Through-holes created: {len(centers)} x diameter {diameter_mm:g} mm, "
-        f"edge offset {edge_offset_mm:g} mm."
+        f"Through-holes created: {len(centers)} x diameter {diameter_mm:g} mm."
     )
+    if edge_offset_mm is not None:
+        print(f"Hole center edge offset: {float(edge_offset_mm):g} mm.")
+    print("Hole centers (X, Y) in mm:", centers)
     return cut_feature
