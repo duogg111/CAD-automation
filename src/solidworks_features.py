@@ -23,6 +23,76 @@ SW_STANDARD_ISO = 8
 SW_STANDARD_ISO_TAPPED_HOLE = 147
 
 
+def _wrap_generated_interface(
+    obj: Any,
+    interface_name: str,
+    type_info_source: Any,
+    gencache_module: Any,
+) -> Any:
+    """Wrap an IDispatch in its MakePy-generated interface class.
+
+    CreateDefinition returns an untyped/dynamic dispatch in some pywin32
+    configurations. Dynamic CDispatch cannot reliably write interface
+    properties such as IWizardHoleFeatureData2.ThreadDepth. Resolve the
+    interface IID from the SOLIDWORKS type library and instantiate the
+    generated wrapper; the wrapper performs QueryInterface automatically.
+    """
+    ole_object = getattr(obj, "_oleobj_", None)
+    source_ole = getattr(type_info_source, "_oleobj_", None)
+    if ole_object is None or source_ole is None:
+        raise TypeError(
+            "A live COM object and a SOLIDWORKS COM type-information source are required."
+        )
+
+    type_info = source_ole.GetTypeInfo()
+    type_library, _ = type_info.GetContainingTypeLib()
+    library_attr = type_library.GetLibAttr()
+    library_module = gencache_module.EnsureModule(
+        library_attr[0],
+        library_attr[1],
+        library_attr[3],
+        library_attr[4],
+    )
+
+    interface_iid = library_module.NamesToIIDMap.get(interface_name)
+    if interface_iid is None:
+        raise LookupError(
+            f"{interface_name} is not present in the generated SOLIDWORKS type library."
+        )
+
+    interface_module = gencache_module.GetModuleForCLSID(interface_iid)
+    interface_class = getattr(interface_module, interface_name, None)
+    if interface_class is None:
+        raise LookupError(
+            f"MakePy generated no Python wrapper class for {interface_name}."
+        )
+
+    return interface_class(ole_object)
+
+
+def _early_bind_solidworks_interface(
+    obj: Any,
+    interface_name: str,
+    type_info_source: Any,
+) -> Any:
+    """Bind a SOLIDWORKS dispatch to a generated interface wrapper or fail clearly."""
+    from win32com.client import gencache
+
+    try:
+        return _wrap_generated_interface(
+            obj,
+            interface_name,
+            type_info_source,
+            gencache,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not early-bind {interface_name}. Run "
+            "'python -m win32com.client.makepy' and select the "
+            "'SOLIDWORKS 2026 Type Library (22.0)', then retry."
+        ) from exc
+
+
 def _call_member(obj: Any, name: str, *args: Any) -> Any:
     """Read zero-argument COM members without invoking a returned dispatch value."""
     member = getattr(obj, name)
@@ -449,6 +519,15 @@ def apply_iso_metric_tapped_holes(
         hole_data = feature_manager.CreateDefinition(SW_FM_HOLE_WIZARD)
         if hole_data is None:
             raise RuntimeError("FeatureManager.CreateDefinition(swFmHoleWzd) returned None.")
+
+        # CreateDefinition can return a dynamic CDispatch (<unknown>).
+        # Bind to the MakePy-generated IWizardHoleFeatureData2 wrapper before
+        # using property setters; otherwise pywin32 cannot discover property puts.
+        hole_data = _early_bind_solidworks_interface(
+            hole_data,
+            "IWizardHoleFeatureData2",
+            feature_manager,
+        )
 
         # ISO metric straight-tap Hole Wizard, M3/M4 coarse series, Through All.
         hole_data.InitializeHole(
