@@ -1,89 +1,88 @@
 # SOLIDWORKS Automation – Python COM
 
-Dự án mẫu tự động tạo một khối hộp chữ nhật trong SOLIDWORKS bằng Python và COM API.
+Dự án tự động tạo Part trong SOLIDWORKS bằng Python và COM API. Nhánh phát triển feature/natural-language-cad bổ sung hướng **Text-to-CAD**: nhập mô tả tiếng Việt, xem kế hoạch CAD, xác nhận rồi tạo khối cơ sở.
 
-## Kết quả
+## Môi trường đã kiểm chứng cho starter gốc
 
-- Kích thước: **100 × 60 × 30 mm**
-- Định dạng: `SLDPRT`
-- File đầu ra: `output/My_First_Part.SLDPRT`
-
-## Môi trường đã kiểm chứng
-
-- Windows
-- SOLIDWORKS 2026
+- Windows, SOLIDWORKS 2026
 - Python 3.14 64-bit
-- `pywin32`
+- pywin32
 - VS Code
 
-Đây là môi trường đã chạy thành công trong dự án gốc. Các phiên bản SOLIDWORKS/Python khác có thể cần điều chỉnh.
+Các phiên bản khác có thể cần điều chỉnh COM API.
 
 ## Cấu trúc
 
-```text
-SolidWorks_Automation/
-├── src/
-│   └── create_box.py
-├── docs/
-│   ├── workflow.md
-│   └── troubleshooting.md
-├── output/
-│   └── .gitkeep
-├── .gitignore
-├── requirements.txt
-└── README.md
-```
+    src/
+      __init__.py
+      create_box.py
+      text_to_cad.py
+      run_text_to_cad.py
+    tests/
+      test_text_to_cad.py
+    docs/
+      workflow.md
+      troubleshooting.md
+      natural-language-cad.md
+    output/
 
 ## Cài đặt
 
 Mở PowerShell tại thư mục dự án:
 
-```powershell
-py -3.14 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
+    py -3.14 -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
 
-Nếu PowerShell chặn kích hoạt môi trường ảo, có thể chạy Python trực tiếp:
+Nếu cần tạo COM wrapper, chạy:
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+    python -m win32com.client.makepy
 
-## Cấu hình COM Type Library (khi cần)
+Chọn **SOLIDWORKS 2026 Type Library (22.0)**.
 
-Nếu pywin32 báo lỗi MakePy hoặc không tạo được wrapper cho SOLIDWORKS:
+## Cách 1 – tạo hộp bằng script gốc
 
-```powershell
-python -m win32com.client.makepy
-```
+    python src/create_box.py
 
-Trong danh sách, chọn **SOLIDWORKS 2026 Type Library (22.0)**.
+Mặc định tạo hộp 100 × 60 × 30 mm tại output/My_First_Part.SLDPRT.
 
-## Chạy chương trình
+## Cách 2 – Text-to-CAD
 
-```powershell
-python src/create_box.py
-```
+Ví dụ:
 
-Đảm bảo SOLIDWORKS đã được cài đặt trên máy. Script sẽ kết nối/mở SOLIDWORKS, tạo Part, vẽ Sketch, Extrude, Rebuild và lưu file.
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm"
 
-## Thay đổi kích thước
+Hoặc chạy tương tác:
 
-Mở `src/create_box.py` và sửa:
+    python -m src.run_text_to_cad
 
-```python
-LENGTH = 100.0
-WIDTH = 60.0
-HEIGHT = 30.0
-```
+Chương trình sẽ:
+1. Phân tích câu mô tả và kiểm tra kích thước.
+2. Hiển thị CAD plan để người dùng xem lại.
+3. Hỏi xác nhận trước khi gọi SOLIDWORKS.
+4. Tạo khối hộp cơ sở và lưu tại output/Generated_From_Text.SLDPRT.
 
-Đơn vị đầu vào là mm. Hàm `mm_to_m()` chuyển sang mét trước khi truyền vào API.
+Có thể chỉ định file đầu ra:
 
-## Lưu ý
+    python -m src.run_text_to_cad "Tao hop dai 120 mm rong 80 mm cao 40 mm" --output "output/Hop_120.SLDPRT"
 
-- Tên `Front Plane` và `Sketch1` phụ thuộc template/ngôn ngữ và cấu trúc FeatureManager. Nếu template khác, cần kiểm tra lại tên feature.
-- Không commit thư mục `.venv/`, file SOLIDWORKS tạm `~$...`, hoặc file đầu ra lớn nếu không cần thiết.
-- Không coi các tham số COM là có thể dùng giống hệt trên mọi phiên bản. Hãy kiểm tra API Help của đúng phiên bản SOLIDWORKS đang dùng.
-- Xem `docs/troubleshooting.md` để biết các lỗi đã gặp và cách xử lý đã xác minh.
+### Giới hạn hiện tại
+
+- Hỗ trợ khối hộp chữ nhật và kích thước dài/rộng/cao hoặc bộ ba 100 x 60 x 30 mm.
+- Có thể trích xuất yêu cầu fillet, chamfer và lỗ thành CAD plan.
+- **Fillet, chamfer và lỗ chưa được thực thi**; chương trình chỉ tạo khối hộp cơ sở và cảnh báo rõ điều này.
+- Parser hiện dùng quy tắc, không gọi dịch vụ AI.
+- Mô tả thiếu hoặc kích thước không hợp lệ sẽ bị từ chối, không tự đoán.
+
+Chi tiết: docs/natural-language-cad.md.
+
+## Chạy kiểm thử parser
+
+    python -m unittest discover -s tests -v
+
+Các bài test parser không cần SOLIDWORKS. Việc kiểm thử COM tạo hình vẫn cần môi trường SOLIDWORKS thực tế.
+
+## Đơn vị
+
+Thông số đầu vào dùng mm. Hàm mm_to_m() chuyển sang mét trước khi gọi SOLIDWORKS API.
