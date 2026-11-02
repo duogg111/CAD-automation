@@ -58,6 +58,7 @@ def main() -> None:
         hole_count = int(params["count"])
         layout = str(params["layout"])
         axis = str(params.get("axis", "x"))
+        hole_offset = params.get("edge_offset_mm") if layout == "four_corners" else None
         if hole.kind == "tapped_holes":
             tapped_hole_size = str(params["size"])
             hole_diameter = float(params["tap_drill_diameter_mm"])
