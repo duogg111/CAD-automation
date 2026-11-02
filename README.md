@@ -1,6 +1,6 @@
 # SOLIDWORKS Automation – Python COM
 
-Dự án tự động tạo Part trong SOLIDWORKS bằng Python và COM API. Nhánh phát triển feature/natural-language-cad bổ sung hướng **Text-to-CAD**: nhập mô tả tiếng Việt, xem kế hoạch CAD, xác nhận rồi tạo khối cơ sở.
+Dự án tự động tạo Part trong SOLIDWORKS bằng Python và COM API. Nhánh feature/natural-language-cad bổ sung hướng Text-to-CAD: nhập mô tả tiếng Việt, xem kế hoạch CAD, xác nhận rồi tạo khối cơ sở.
 
 ## Môi trường đã kiểm chứng cho starter gốc
 
@@ -16,6 +16,7 @@ Các phiên bản khác có thể cần điều chỉnh COM API.
     src/
       __init__.py
       create_box.py
+      solidworks_features.py
       text_to_cad.py
       run_text_to_cad.py
     tests/
@@ -35,54 +36,42 @@ Mở PowerShell tại thư mục dự án:
     python -m pip install --upgrade pip
     pip install -r requirements.txt
 
-Nếu cần tạo COM wrapper, chạy:
+Nếu cần tạo COM wrapper/constants, chạy:
 
     python -m win32com.client.makepy
 
-Chọn **SOLIDWORKS 2026 Type Library (22.0)**.
+Chọn SOLIDWORKS 2026 Type Library (22.0).
 
-## Cách 1 – tạo hộp bằng script gốc
+## Text-to-CAD
 
-    python src/create_box.py
-
-Mặc định tạo hộp 100 × 60 × 30 mm tại output/My_First_Part.SLDPRT.
-
-## Cách 2 – Text-to-CAD
-
-Ví dụ:
+Tạo hộp đơn giản:
 
     python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm"
 
-Hoặc chạy tương tác:
+Tạo hộp và bo bốn cạnh đứng ngoài:
 
-    python -m src.run_text_to_cad
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, bo goc R5"
 
-Chương trình sẽ:
-1. Phân tích câu mô tả và kiểm tra kích thước.
-2. Hiển thị CAD plan để người dùng xem lại.
-3. Hỏi xác nhận trước khi gọi SOLIDWORKS.
-4. Tạo khối hộp cơ sở và lưu tại output/Generated_From_Text.SLDPRT.
+Chương trình hiển thị CAD plan và yêu cầu xác nhận trước khi gọi SOLIDWORKS. Fillet R5 được áp dụng cho bốn cạnh đứng ở bốn góc ngoài của hộp. Đây không phải lệnh bo tất cả 12 cạnh.
 
-Có thể chỉ định file đầu ra:
+Chỉ định file đầu ra:
 
-    python -m src.run_text_to_cad "Tao hop dai 120 mm rong 80 mm cao 40 mm" --output "output/Hop_120.SLDPRT"
+    python -m src.run_text_to_cad "Tao hop dai 120 mm rong 80 mm cao 40 mm, bo goc R5" --output "output/Hop_120.SLDPRT"
 
-### Giới hạn hiện tại
+### Phạm vi hiện tại
 
 - Hỗ trợ khối hộp chữ nhật và kích thước dài/rộng/cao hoặc bộ ba 100 x 60 x 30 mm.
-- Có thể trích xuất yêu cầu fillet, chamfer và lỗ thành CAD plan.
-- **Fillet, chamfer và lỗ chưa được thực thi**; chương trình chỉ tạo khối hộp cơ sở và cảnh báo rõ điều này.
+- Fillet bán kính không đổi trên bốn cạnh đứng ngoài được triển khai bằng ISimpleFilletFeatureData2.
+- Chamfer và holes mới chỉ được phân tích; chưa thực thi.
 - Parser hiện dùng quy tắc, không gọi dịch vụ AI.
-- Mô tả thiếu hoặc kích thước không hợp lệ sẽ bị từ chối, không tự đoán.
+- Bán kính Fillet phải nhỏ hơn một nửa cạnh ngắn của mặt đáy.
 
-Chi tiết: docs/natural-language-cad.md.
-
-## Chạy kiểm thử parser
+## Chạy kiểm thử không cần SOLIDWORKS
 
     python -m unittest discover -s tests -v
 
-Các bài test parser không cần SOLIDWORKS. Việc kiểm thử COM tạo hình vẫn cần môi trường SOLIDWORKS thực tế.
+Các bài test parser và bộ lọc hình học không gọi COM. Việc kiểm thử Feature Fillet thực tế vẫn cần SOLIDWORKS 2026 trên Windows.
 
 ## Đơn vị
 
-Thông số đầu vào dùng mm. Hàm mm_to_m() chuyển sang mét trước khi gọi SOLIDWORKS API.
+Thông số đầu vào dùng mm. SOLIDWORKS API nhận đơn vị mét; code chuyển đổi trước khi gọi API.
