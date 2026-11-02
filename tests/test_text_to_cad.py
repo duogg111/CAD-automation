@@ -7,8 +7,15 @@ from src.solidworks_features import (
     SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER,
     SW_FILLET_OVERFLOW_DEFAULT,
     SW_END_COND_THROUGH_ALL,
+    SW_END_THREAD_TYPE_THROUGH_ALL,
+    SW_COSMETIC_THREAD_WITH_CALLOUT,
+    SW_FM_HOLE_WIZARD,
+    SW_WZD_TAP,
+    SW_STANDARD_ISO,
+    SW_STANDARD_ISO_TAPPED_HOLE,
     _call_member,
     compute_four_corner_hole_centers_mm,
+    compute_hole_centers_mm,
     get_box_top_perimeter_edges,
     get_box_vertical_edges,
     is_vertical_extrusion_edge,
@@ -49,6 +56,12 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER, 3)
         self.assertEqual(SW_FILLET_OVERFLOW_DEFAULT, 0)
         self.assertEqual(SW_END_COND_THROUGH_ALL, 1)
+        self.assertEqual(SW_END_THREAD_TYPE_THROUGH_ALL, 1)
+        self.assertEqual(SW_COSMETIC_THREAD_WITH_CALLOUT, 1)
+        self.assertEqual(SW_FM_HOLE_WIZARD, 25)
+        self.assertEqual(SW_WZD_TAP, 4)
+        self.assertEqual(SW_STANDARD_ISO, 8)
+        self.assertEqual(SW_STANDARD_ISO_TAPPED_HOLE, 147)
 
     def test_labelled_dimensions_and_features(self):
         plan = parse_description(
@@ -91,10 +104,96 @@ class TextToCADTests(unittest.TestCase):
         self.assertTrue(plan.features[0].parameters["offset_was_defaulted"])
         self.assertTrue(any("10 mm" in warning for warning in plan.warnings))
 
-    def test_non_four_hole_count_is_preview_only(self):
-        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D3")
+    def test_non_four_hole_count_without_layout_is_preview_only(self):
+        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 3 lo D3")
         self.assertEqual(plan.features[0].parameters["layout"], "unspecified")
-        self.assertTrue(any("so lo khac" in warning for warning in plan.warnings))
+
+    def test_two_holes_center_to_center_along_length(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 cach nhau 40 mm"
+        )
+        hole = plan.features[0]
+        self.assertEqual(hole.parameters["layout"], "center_to_center_x")
+        self.assertEqual(hole.parameters["center_distance_mm"], 40.0)
+        centers = compute_hole_centers_mm(
+            100, 60, 2, "center_to_center_x", center_distance_mm=40, diameter_mm=5
+        )
+        self.assertEqual(centers, [(30.0, 30.0), (70.0, 30.0)])
+
+    def test_two_holes_center_to_center_along_width(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 cach nhau 30 mm theo chieu rong"
+        )
+        self.assertEqual(plan.features[0].parameters["layout"], "center_to_center_y")
+        centers = compute_hole_centers_mm(
+            100, 60, 2, "center_to_center_y", center_distance_mm=30, diameter_mm=5
+        )
+        self.assertEqual(centers, [(50.0, 15.0), (50.0, 45.0)])
+
+    def test_explicit_xy_hole_coordinates(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D5 tai (20, 15) va (80, 15)"
+        )
+        self.assertEqual(plan.features[0].parameters["layout"], "explicit_points")
+        self.assertEqual(
+            plan.features[0].parameters["centers_mm"],
+            [(20.0, 15.0), (80.0, 15.0)],
+        )
+        centers = compute_hole_centers_mm(
+            100, 60, 2, "explicit_points",
+            explicit_points=[(20, 15), (80, 15)], diameter_mm=5
+        )
+        self.assertEqual(centers, [(20.0, 15.0), (80.0, 15.0)])
+
+    def test_single_hole_at_explicit_xy(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai x=20 y=15"
+        )
+        self.assertEqual(plan.features[0].parameters["layout"], "explicit_points")
+        self.assertEqual(plan.features[0].parameters["centers_mm"], [(20.0, 15.0)])
+
+    def test_single_hole_defaults_to_face_center(self):
+        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5")
+        self.assertEqual(plan.features[0].parameters["layout"], "single_center")
+        centers = compute_hole_centers_mm(100, 60, 1, "single_center", diameter_mm=5)
+        self.assertEqual(centers, [(50.0, 30.0)])
+
+    def test_iso_m3_tapped_holes_parse_and_plan(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, tao 2 lo ren M3 cach nhau 40 mm"
+        )
+        tap = plan.features[0]
+        self.assertEqual(tap.kind, "tapped_holes")
+        self.assertEqual(tap.parameters["size"], "M3")
+        self.assertEqual(tap.parameters["thread_diameter_mm"], 3.0)
+        self.assertEqual(tap.parameters["tap_drill_diameter_mm"], 2.5)
+        self.assertEqual(tap.parameters["pitch_mm"], 0.5)
+        self.assertEqual(tap.parameters["layout"], "center_to_center_x")
+
+    def test_iso_m4_tapped_hole_parse(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, tao 1 lo ren M4 tai (20, 20)"
+        )
+        tap = plan.features[0]
+        self.assertEqual(tap.kind, "tapped_holes")
+        self.assertEqual(tap.parameters["size"], "M4")
+        self.assertEqual(tap.parameters["tap_drill_diameter_mm"], 3.3)
+        self.assertEqual(tap.parameters["pitch_mm"], 0.7)
+        self.assertEqual(tap.parameters["centers_mm"], [(20.0, 20.0)])
+
+    def test_tapped_hole_default_center(self):
+        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3")
+        self.assertEqual(plan.features[0].parameters["layout"], "single_center")
+
+    def test_tapped_hole_outside_face_rejected(self):
+        with self.assertRaises(ParseError):
+            parse_description(
+                "Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3 tai (120, 20)"
+            )
+
+    def test_tapped_hole_thread_size_only_supports_m3_m4(self):
+        with self.assertRaises(ParseError):
+            parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M5")
 
     def test_dimension_tuple(self):
         plan = parse_description("Tao mot cai hop 100 x 60 x 30 mm")
@@ -171,6 +270,12 @@ class TextToCADTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compute_four_corner_hole_centers_mm(30, 20, 4, 10, fillet_radius_mm=0)
 
+    def test_hole_pitch_rejects_spacing_smaller_than_diameter(self):
+        with self.assertRaises(ValueError):
+            compute_hole_centers_mm(
+                100, 60, 2, "center_to_center_x", center_distance_mm=4, diameter_mm=5
+            )
+
     def test_zero_argument_com_member_wrapper(self):
         class Fake:
             def function_member(self):
@@ -195,17 +300,15 @@ class TextToCADTests(unittest.TestCase):
         obj = FakeComObject()
         self.assertIs(_call_member(obj, "GetStartVertex"), obj.dispatch_value)
 
-
     def test_rounded_corner_requires_extra_hole_offset(self):
         with self.assertRaises(ValueError):
             compute_four_corner_hole_centers_mm(
                 100, 60, 3, 9.5, fillet_radius_mm=5
             )
 
-
     def test_execution_status_marks_non_four_holes_preview_only(self):
         plan = parse_description(
-            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D3"
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 3 lo D3"
         )
         status = plan.to_dict()["execution_status"]
         self.assertEqual(status["holes"], "preview_only")
