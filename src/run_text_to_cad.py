@@ -59,7 +59,8 @@ def main() -> None:
                 plan.dimensions_mm["width"],
                 hole_diameter,
                 hole_offset,
-                max(fillet_radius or 0.0, chamfer_distance or 0.0),
+                fillet_radius_mm=fillet_radius or 0.0,
+                chamfer_distance_mm=chamfer_distance or 0.0,
             )
             print(
                 f"Holes: 4 through-holes, diameter {hole_diameter:g} mm, "
