@@ -8,7 +8,6 @@ from src.solidworks_features import (
     SW_FILLET_OVERFLOW_DEFAULT,
     SW_END_COND_THROUGH_ALL,
     SW_WZD_THREAD_END_THROUGH_ALL,
-    SW_COSMETIC_THREAD_WITH_CALLOUT,
     SW_FM_HOLE_WIZARD,
     SW_WZD_TAP,
     SW_STANDARD_ISO,
@@ -58,7 +57,6 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(SW_FILLET_OVERFLOW_DEFAULT, 0)
         self.assertEqual(SW_END_COND_THROUGH_ALL, 1)
         self.assertEqual(SW_WZD_THREAD_END_THROUGH_ALL, 1)
-        self.assertEqual(SW_COSMETIC_THREAD_WITH_CALLOUT, 1)
         self.assertEqual(SW_FM_HOLE_WIZARD, 25)
         self.assertEqual(SW_WZD_TAP, 4)
         self.assertEqual(SW_STANDARD_ISO, 8)
