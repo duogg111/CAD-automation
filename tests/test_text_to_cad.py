@@ -116,5 +116,19 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(_call_member(fake, "function_member"), "called")
         self.assertEqual(_call_member(fake, "property_member"), "value")
 
+
+    def test_callable_dispatch_value_is_not_invoked(self):
+        class FakeDispatchValue:
+            def __call__(self):
+                raise AssertionError("A COM dispatch value must not be invoked.")
+        class FakeComObject:
+            def __init__(self):
+                self.dispatch_value = FakeDispatchValue()
+            @property
+            def GetStartVertex(self):
+                return self.dispatch_value
+        obj = FakeComObject()
+        self.assertIs(_call_member(obj, "GetStartVertex"), obj.dispatch_value)
+
 if __name__ == "__main__":
     unittest.main()
