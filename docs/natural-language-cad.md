@@ -75,7 +75,7 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 - The supported tap sizes are ISO metric coarse M3 and M4.
 - M3: nominal thread diameter 3 mm, coarse pitch 0.5 mm, standard tap drill 2.5 mm.
 - M4: nominal thread diameter 4 mm, coarse pitch 0.7 mm, standard tap drill 3.3 mm.
-- The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, selects the top-face placement point with SelectByRay, then calls CreateFeature.
+- The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), early-binds the result to the MakePy-generated IWizardHoleFeatureData2 interface, initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, sets thread depth/end condition/cosmetic thread type, selects the top-face placement point with SelectByRay, then calls CreateFeature.
 - An explicitly specified non-coarse pitch is rejected; only ISO coarse M3 and M4 are included in this milestone.
 - Thread depth and thread end condition are set to the part's Through All depth. Cosmetic thread display with callout is requested.
 - This is a Hole Wizard tapped-hole/cosmetic-thread feature, not a modeled helical solid thread. For true 3D thread geometry, a separate Thread feature workflow would be required.
@@ -86,7 +86,7 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 - Chamfer: select top perimeter edges, create simple fillet/chamfer feature data, then CreateFeature.
 - Fillet: select the four vertical edges and create a constant-radius simple fillet feature.
 - Ordinary holes: select the top face, create circles in one sketch, then FeatureCut4 with swEndCondThroughAll.
-- Tapped holes: IFeatureManager.CreateDefinition(swFmHoleWzd) → IWizardHoleFeatureData2.InitializeHole → set thread depth/end condition/cosmetic thread properties → select placement point with IModelDocExtension.SelectByRay → IFeatureManager.CreateFeature.
+- Tapped holes: IFeatureManager.CreateDefinition(swFmHoleWzd) → early-bind the returned dispatch to the generated IWizardHoleFeatureData2 interface → InitializeHole → set thread depth/end condition/cosmetic thread properties → select placement point with IModelDocExtension.SelectByRay → IFeatureManager.CreateFeature.
 
 ## Run and test
 
