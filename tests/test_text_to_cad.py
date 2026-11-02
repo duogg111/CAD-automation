@@ -340,5 +340,18 @@ class TextToCADTests(unittest.TestCase):
     def test_tapped_hole_through_all_enum_is_explicit(self):
         self.assertEqual(SW_WZD_THREAD_END_THROUGH_ALL, 1)
 
+
+    def test_xy_coordinates_with_units_and_vietnamese_and(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 mm va Y=15 mm"
+        )
+        self.assertEqual(plan.features[0].parameters["centers_mm"], [(20.0, 15.0)])
+
+    def test_metric_tap_rejects_non_coarse_pitch(self):
+        with self.assertRaises(ParseError):
+            parse_description(
+                "Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3x0.35"
+            )
+
 if __name__ == "__main__":
     unittest.main()
