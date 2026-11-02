@@ -104,13 +104,23 @@ def create_box(
         warnings = win32com.client.VARIANT(
             pythoncom.VT_BYREF | pythoncom.VT_I4, 0
         )
+        # These are optional COM interface parameters. Under pywin32
+        # late binding, Python None is not always marshalled as VBA Nothing.
+        # Use an explicit VT_DISPATCH null pointer for both object arguments.
+        null_export_data = win32com.client.VARIANT(
+            pythoncom.VT_DISPATCH, None
+        )
+        null_advanced_options = win32com.client.VARIANT(
+            pythoncom.VT_DISPATCH, None
+        )
+
         extension = model.Extension
         save_result = extension.SaveAs3(
             output_path,
-            0,      # swSaveAsCurrentVersion
-            1,      # swSaveAsOptions_Silent
-            None,   # ExportData
-            None,   # AdvancedSaveAsOptions
+            0,                      # swSaveAsCurrentVersion
+            1,                      # swSaveAsOptions_Silent
+            null_export_data,       # ExportData: COM Nothing
+            null_advanced_options,  # AdvancedSaveAsOptions: COM Nothing
             errors,
             warnings,
         )
