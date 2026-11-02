@@ -8,7 +8,7 @@ Baseline environment: Windows + SOLIDWORKS 2026 + Python 3.14 64-bit + pywin32.
 
 Select SOLIDWORKS 2026 Type Library (22.0). Generated interface wrappers are important for writable feature-data properties; the project early-binds IWizardHoleFeatureData2 rather than relying on a dynamic <unknown> dispatch object.
 
-## Hole Wizard: Property can not be set (ThreadDepth, ThreadEndCondition)
+## Hole Wizard: COM server fault when assigning ThreadDepth
 
 FeatureManager.CreateDefinition(swFmHoleWzd) may return a late-bound pywin32 CDispatch whose displayed name is <unknown>. Its dynamic wrapper may not have property-put metadata, so code such as:
 
@@ -20,7 +20,7 @@ can fail in Python with:
 
 This does not mean that ThreadDepth is absent from the SOLIDWORKS API. SOLIDWORKS documents it as a read/write property on IWizardHoleFeatureData2.
 
-The project fix is to bind the raw dispatch to the generated MakePy interface before calling InitializeHole or setting its properties:
+For the earlier Python-side AttributeError, bind the raw dispatch to the generated MakePy interface before calling InitializeHole or setting its properties:
 
     hole_data = feature_manager.CreateDefinition(SW_FM_HOLE_WIZARD)
     hole_data = _early_bind_solidworks_interface(
@@ -28,12 +28,23 @@ The project fix is to bind the raw dispatch to the generated MakePy interface be
         "IWizardHoleFeatureData2",
     )
     hole_data.InitializeHole(...)
-    hole_data.ThreadDepth = height_m
     hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
 
 The helper does not call GetTypeInfo() on IFeatureManager or on the Hole Wizard definition. Some SOLIDWORKS proxies return DISP_E_BADINDEX for that call. Instead, it enumerates registered type libraries with pywin32 selecttlb.EnumTlbs(), filters the stable sldworks.tlb LIBID {83A33D31-27C5-11CE-BFD4-00400513BB57}, resolves the actual version from the registered TLB file, loads the MakePy module with gencache.EnsureModule(), resolves IWizardHoleFeatureData2 through NamesToIIDMap, then instantiates the generated interface class with the raw IDispatch. The generated wrapper performs QueryInterface and exposes the interface property setters.
 
+A second failure mode is different: the generated property setter can be reached successfully, but SOLIDWORKS itself can throw COM error -2147417851 (RPC_E_SERVERFAULT) when `ThreadDepth` is assigned for this Through All tapped-hole configuration. For this case, do not assign `ThreadDepth`. The tap-drill bore is already initialized Through All, and the code sets `ThreadEndCondition` to Through All. A numeric thread depth is redundant when the thread end condition is Through All.
+
 The CosmeticThreadType property is not set by this code. Although some language-specific signatures show a setter, SOLIDWORKS API Help explicitly states that Set is not implemented for this property in the referenced API versions. Its display behaviour follows the installed Hole Wizard/template defaults. Do not add a Python assignment to this property.
+
+The current creation sequence is:
+
+    hole_data = feature_manager.CreateDefinition(SW_FM_HOLE_WIZARD)
+    hole_data = _early_bind_solidworks_interface(
+        hole_data,
+        "IWizardHoleFeatureData2",
+    )
+    hole_data.InitializeHole(...)
+    hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
 
 If early binding fails:
 1. Confirm that the installed SOLIDWORKS 2026 type library is registered in Windows.
@@ -43,7 +54,7 @@ If early binding fails:
 
 The code reads the actual major/minor version from the registered sldworks.tlb file; do not hardcode the UI's displayed version string as a Python integer.
 
-Do not work around this exception by deleting all thread settings: ThreadDepth and ThreadEndCondition still need to be configured for a Through All tapped hole.
+Do not reintroduce the ThreadDepth assignment for a Through All tapped hole. If SOLIDWORKS now throws at the ThreadEndCondition setter or CreateFeature, capture that new traceback separately; it is a different failure point and may require a follow-up feature-definition modification/readback check.
 
 ## Zero-argument COM members and Member not found
 
@@ -65,7 +76,7 @@ The implementation uses the feature-data workflow:
 - CreateDefinition(swFmHoleWzd)
 - Early-bind to IWizardHoleFeatureData2
 - InitializeHole(swWzdTap, swStandardISO, swStandardISOTappedHole, "M3"/"M4", swEndCondThroughAll)
-- Set ThreadDepth and ThreadEndCondition
+- Set ThreadEndCondition to Through All; do not explicitly assign ThreadDepth for this Through All case
 - Select the top-face placement point with SelectByRay
 - Call CreateFeature
 
