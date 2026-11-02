@@ -29,8 +29,12 @@ The project fix is to bind the raw dispatch to the generated MakePy interface be
         feature_manager,
     )
     hole_data.InitializeHole(...)
+    hole_data.ThreadDepth = height_m
+    hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
 
-The helper obtains the SOLIDWORKS type library from IFeatureManager.GetTypeInfo(), resolves the interface IID using the generated module's NamesToIIDMap, loads the generated interface class, and instantiates it with the COM dispatch. The generated wrapper performs the interface QueryInterface and exposes the property's setter.
+The helper obtains the SOLIDWORKS type library from IFeatureManager.GetTypeInfo(), resolves the interface IID using the generated module's NamesToIIDMap, loads the generated interface class, and instantiates it with the COM dispatch. The generated wrapper performs QueryInterface and exposes the interface property setters.
+
+The CosmeticThreadType property is not set by this code. Although some language-specific signatures show a setter, SOLIDWORKS API Help explicitly states that Set is not implemented for this property in the referenced API versions. Its display behaviour follows the installed Hole Wizard/template defaults. Do not add a Python assignment to this property.
 
 If early binding fails:
 1. Run python -m win32com.client.makepy.
@@ -38,7 +42,7 @@ If early binding fails:
 3. Confirm that MakePy completes without an error.
 4. Pull the latest feature/natural-language-cad branch and retry.
 
-Do not work around this exception by deleting all thread settings: the thread end condition and cosmetic-thread options still need to be set and verified.
+Do not work around this exception by deleting all thread settings: ThreadDepth and ThreadEndCondition still need to be configured for a Through All tapped hole.
 
 ## Zero-argument COM members and Member not found
 
@@ -56,15 +60,15 @@ The XY origin is the lower-left corner of the top face in the base sketch coordi
 
 ## ISO M3/M4 tapped Hole Wizard
 
-The implementation uses the feature-data workflow, not IFeatureManager.HoleWizard5:
+The implementation uses the feature-data workflow:
 - CreateDefinition(swFmHoleWzd)
 - Early-bind to IWizardHoleFeatureData2
 - InitializeHole(swWzdTap, swStandardISO, swStandardISOTappedHole, "M3"/"M4", swEndCondThroughAll)
-- Set ThreadDepth, ThreadEndCondition, and CosmeticThreadType
+- Set ThreadDepth and ThreadEndCondition
 - Select the top-face placement point with SelectByRay
 - Call CreateFeature
 
-The ISO M3/M4 coarse sizes use the SOLIDWORKS Hole Wizard table. The tap-drill diameter is selected from that standard. Cosmetic thread annotation is not a true helical solid thread.
+The ISO M3/M4 coarse sizes use the SOLIDWORKS Hole Wizard table. The tap-drill diameter is selected from that standard. Cosmetic-thread callout display follows the Hole Wizard/template default; the automation does not attempt to assign the read-only CosmeticThreadType property.
 
 If Hole Wizard returns None after this binding fix, inspect the selected-face ray and confirm the installed SOLIDWORKS ISO Hole Wizard database contains the requested size. Capture the full traceback and the feature-data property values.
 
