@@ -10,6 +10,12 @@ SW_FEATURE_FILLET_CIRCULAR = 0
 SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER = 3
 SW_FILLET_OVERFLOW_DEFAULT = 0
 SW_END_COND_THROUGH_ALL = 1
+SW_END_THREAD_TYPE_THROUGH_ALL = 1
+SW_COSMETIC_THREAD_WITH_CALLOUT = 1
+SW_FM_HOLE_WIZARD = 25
+SW_WZD_TAP = 4
+SW_STANDARD_ISO = 8
+SW_STANDARD_ISO_TAPPED_HOLE = 147
 
 
 def _call_member(obj: Any, name: str, *args: Any) -> Any:
@@ -309,30 +315,210 @@ def compute_four_corner_hole_centers_mm(
     ]
 
 
+def compute_hole_centers_mm(
+    length_mm: float,
+    width_mm: float,
+    count: int,
+    layout: str,
+    edge_offset_mm: float | None = None,
+    center_distance_mm: float | None = None,
+    axis: str = "x",
+    explicit_points: list[tuple[float, float]] | None = None,
+    diameter_mm: float = 1.0,
+    fillet_radius_mm: float = 0.0,
+    chamfer_distance_mm: float = 0.0,
+) -> list[tuple[float, float]]:
+    """Resolve and validate hole center positions in the top-face XY coordinates."""
+    length = float(length_mm)
+    width = float(width_mm)
+    diameter = float(diameter_mm)
+    if min(length, width, diameter) <= 0 or int(count) <= 0:
+        raise ValueError("Part dimensions, hole diameter and hole count must be positive.")
+
+    if layout == "four_corners":
+        if edge_offset_mm is None:
+            raise ValueError("Four-corner layout requires an edge offset.")
+        centers = compute_four_corner_hole_centers_mm(
+            length, width, diameter, float(edge_offset_mm),
+            fillet_radius_mm, chamfer_distance_mm,
+        )
+    elif layout == "center_to_center_x":
+        if int(count) != 2 or center_distance_mm is None:
+            raise ValueError("Center-to-center layout along X requires exactly two holes and a pitch.")
+        pitch = float(center_distance_mm)
+        if pitch <= diameter or pitch / 2.0 + diameter / 2.0 >= length / 2.0:
+            raise ValueError("The X-axis hole pitch does not fit the part.")
+        centers = [
+            (length / 2.0 - pitch / 2.0, width / 2.0),
+            (length / 2.0 + pitch / 2.0, width / 2.0),
+        ]
+    elif layout == "center_to_center_y":
+        if int(count) != 2 or center_distance_mm is None:
+            raise ValueError("Center-to-center layout along Y requires exactly two holes and a pitch.")
+        pitch = float(center_distance_mm)
+        if pitch <= diameter or pitch / 2.0 + diameter / 2.0 >= width / 2.0:
+            raise ValueError("The Y-axis hole pitch does not fit the part.")
+        centers = [
+            (length / 2.0, width / 2.0 - pitch / 2.0),
+            (length / 2.0, width / 2.0 + pitch / 2.0),
+        ]
+    elif layout == "explicit_points":
+        if explicit_points is None or len(explicit_points) != int(count):
+            raise ValueError("Explicit point layout requires one XY coordinate pair per hole.")
+        centers = [(float(x), float(y)) for x, y in explicit_points]
+    elif layout == "single_center":
+        if int(count) != 1:
+            raise ValueError("Single-center layout supports exactly one hole.")
+        centers = [(length / 2.0, width / 2.0)]
+    else:
+        raise ValueError(f"Unsupported automatic hole layout: {layout}")
+
+    hole_radius = diameter / 2.0
+    safety_margin = 0.25
+    for x, y in centers:
+        if not (0.0 < x < length and 0.0 < y < width):
+            raise ValueError(f"Hole center ({x:g}, {y:g}) is outside the top face.")
+        edge_clearance = min(x, length - x, y, width - y)
+        required_edge = float(chamfer_distance_mm) + hole_radius + safety_margin
+        if edge_clearance <= required_edge:
+            raise ValueError(
+                f"Hole center ({x:g}, {y:g}) is too close to an edge/chamfer; "
+                f"clearance must exceed {required_edge:g} mm."
+            )
+        fillet_radius = float(fillet_radius_mm)
+        if fillet_radius:
+            corner_centers = [
+                (fillet_radius, fillet_radius),
+                (length - fillet_radius, fillet_radius),
+                (length - fillet_radius, width - fillet_radius),
+                (fillet_radius, width - fillet_radius),
+            ]
+            min_corner_distance = min(
+                ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                for cx, cy in corner_centers
+            )
+            if min_corner_distance <= fillet_radius + hole_radius + safety_margin:
+                raise ValueError(
+                    f"Hole center ({x:g}, {y:g}) is too close to a rounded Fillet corner."
+                )
+
+    return centers
+
+
+def apply_iso_metric_tapped_holes(
+    model: Any,
+    centers_mm: list[tuple[float, float]],
+    height_mm: float,
+    size: str,
+) -> list[Any]:
+    """Create ISO M3/M4 tapped Hole Wizard features at explicitly selected points.
+
+    The feature carries Hole Wizard thread data and cosmetic-thread annotation;
+    it does not create a true helical solid thread.
+    """
+    size = str(size).upper()
+    if size not in {"M3", "M4"}:
+        raise ValueError("Only ISO coarse metric M3 and M4 tapped holes are supported.")
+    if not centers_mm:
+        raise ValueError("At least one tapped-hole center is required.")
+    height_mm = float(height_mm)
+    if height_mm <= 0:
+        raise ValueError("Part height must be positive.")
+
+    feature_manager = model.FeatureManager
+    created_features: list[Any] = []
+    height_m = height_mm / 1000.0
+
+    for index, (x_mm, y_mm) in enumerate(centers_mm, start=1):
+        x_mm = float(x_mm)
+        y_mm = float(y_mm)
+        hole_data = feature_manager.CreateDefinition(SW_FM_HOLE_WIZARD)
+        if hole_data is None:
+            raise RuntimeError("FeatureManager.CreateDefinition(swFmHoleWzd) returned None.")
+
+        # ISO metric straight-tap Hole Wizard, M3/M4 coarse series, Through All.
+        hole_data.InitializeHole(
+            SW_WZD_TAP,
+            SW_STANDARD_ISO,
+            SW_STANDARD_ISO_TAPPED_HOLE,
+            size,
+            SW_END_COND_THROUGH_ALL,
+        )
+        # Request a full-depth thread as well as a through tap-drill bore.
+        hole_data.ThreadDepth = height_m
+        hole_data.ThreadEndCondition = SW_END_THREAD_TYPE_THROUGH_ALL
+        hole_data.CosmeticThreadType = SW_COSMETIC_THREAD_WITH_CALLOUT
+
+        model.ClearSelection2(True)
+        selected = model.Extension.SelectByRay(
+            x_mm / 1000.0,
+            y_mm / 1000.0,
+            height_m + 0.005,
+            0.0,
+            0.0,
+            -1.0,
+            0.0005,
+            2,
+            False,
+            0,
+            0,
+        )
+        if not selected:
+            model.ClearSelection2(True)
+            raise RuntimeError(
+                f"Could not select the top-face placement point for tapped hole "
+                f"{index} at ({x_mm:g}, {y_mm:g}) mm."
+            )
+
+        feature = feature_manager.CreateFeature(hole_data)
+        model.ClearSelection2(True)
+        if feature is None:
+            raise RuntimeError(
+                f"SOLIDWORKS failed to create ISO {size} Hole Wizard feature "
+                f"{index} at ({x_mm:g}, {y_mm:g}) mm."
+            )
+        if model.ForceRebuild3(False) is False:
+            raise RuntimeError(f"SOLIDWORKS failed to rebuild tapped-hole feature {index}.")
+        created_features.append(feature)
+
+    print(
+        f"ISO {size} tapped holes created: {len(created_features)}; "
+        "tap-drill dimensions are read from the SOLIDWORKS Hole Wizard standard."
+    )
+    return created_features
+
+
 def apply_four_corner_through_holes(
     model: Any,
     length_mm: float,
     width_mm: float,
     height_mm: float,
     diameter_mm: float,
-    edge_offset_mm: float,
+    edge_offset_mm: float | None = None,
     fillet_radius_mm: float = 0.0,
     chamfer_distance_mm: float = 0.0,
+    centers_mm: list[tuple[float, float]] | None = None,
 ) -> Any:
-    """Cut four through-holes from the top face using one circular sketch."""
+    """Cut positioned through-holes from the top face using one circular sketch."""
     diameter_mm = float(diameter_mm)
     height_mm = float(height_mm)
     if diameter_mm <= 0 or height_mm <= 0:
         raise ValueError("Hole diameter and part height must be greater than zero.")
 
-    centers = compute_four_corner_hole_centers_mm(
+    centers = centers_mm or compute_four_corner_hole_centers_mm(
         length_mm,
         width_mm,
         diameter_mm,
-        edge_offset_mm,
+        float(edge_offset_mm) if edge_offset_mm is not None else 10.0,
         fillet_radius_mm,
         chamfer_distance_mm,
     )
+    centers = [(float(x), float(y)) for x, y in centers]
+    if not centers:
+        raise ValueError("At least one hole center is required.")
+    for x, y in centers:
+        if not (0.0 < x < float(length_mm) and 0.0 < y < float(width_mm)):
+            raise ValueError(f"Hole center ({x:g}, {y:g}) is outside the top face.")
 
     import pythoncom
     import win32com.client
