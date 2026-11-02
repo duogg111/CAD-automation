@@ -194,10 +194,19 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
 
     # ISO coarse metric tapped holes, M3 and M4 only in this milestone.
     tap_match = re.search(
-        r"(?:(\d+)\s*lo\s*)?(?:(?:lo\s*)?ren\s*|(?:ta\s*ro|taro)\s*)?m\s*([34])(?:\s*x\s*[\d,.]+)?\b",
+        r"(?:(\d+)\s*lo\s*)?(?:(?:lo\s*)?ren\s*|(?:ta\s*ro|taro|tap)\s*)?m\s*([34])(?:\s*x\s*[\d,.]+)?\b",
         text,
     )
-    has_tap_context = bool(re.search(r"\b(lo|ren|ta\s*ro|taro)\b", text))
+    has_tap_context = bool(re.search(r"\b(lo|ren|ta\s*ro|taro|tap)\b", text))
+    unsupported_tap = re.search(
+        r"(?:(\d+)\s*lo\s*)?(?:(?:lo\s*)?ren\s*|(?:ta\s*ro|taro|tap)\s*)m\s*(\d+)",
+        text,
+    )
+    if unsupported_tap and has_tap_context and tap_match is None:
+        requested_size = "M" + unsupported_tap.group(2)
+        raise ParseError(
+            f"Lo ren {requested_size} chua duoc ho tro. Hien tai chi ho tro ISO coarse M3 va M4."
+        )
     if tap_match and has_tap_context:
         count = int(tap_match.group(1) or 1)
         size = "M" + tap_match.group(2)
