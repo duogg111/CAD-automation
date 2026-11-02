@@ -21,9 +21,17 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 PART_PATH = os.path.join(OUTPUT_DIR, "My_First_Part.SLDPRT")
 
 try:
-    from src.solidworks_features import apply_vertical_edge_fillet
+    from src.solidworks_features import (
+        apply_vertical_edge_fillet,
+        apply_top_perimeter_chamfer,
+        apply_four_corner_through_holes,
+    )
 except ModuleNotFoundError:
-    from solidworks_features import apply_vertical_edge_fillet
+    from solidworks_features import (
+        apply_vertical_edge_fillet,
+        apply_top_perimeter_chamfer,
+        apply_four_corner_through_holes,
+    )
 
 
 def create_box(
@@ -32,6 +40,10 @@ def create_box(
     height: float = HEIGHT,
     output_path: str = PART_PATH,
     fillet_radius_mm: float | None = None,
+    chamfer_distance_mm: float | None = None,
+    hole_count: int = 0,
+    hole_diameter_mm: float | None = None,
+    hole_edge_offset_mm: float | None = None,
 ) -> str:
     """Create and save a rectangular prism; dimensions are in millimetres."""
     dimensions = {"length": float(length), "width": float(width), "height": float(height)}
@@ -95,6 +107,22 @@ def create_box(
         if feature is None:
             raise RuntimeError("FeatureExtrusion2 returned None.")
 
+        # Apply top-edge Chamfer first. This preserves four shortened vertical
+        # corner edges for the subsequent Fillet operation.
+        if chamfer_distance_mm is not None:
+            max_chamfer = min(
+                dimensions["length"], dimensions["width"], dimensions["height"]
+            )
+            if float(chamfer_distance_mm) <= 0 or float(chamfer_distance_mm) >= max_chamfer / 2.0:
+                raise ValueError(
+                    f"Chamfer distance must be > 0 and < {max_chamfer / 2.0:g} mm."
+                )
+            apply_top_perimeter_chamfer(
+                model,
+                distance_mm=float(chamfer_distance_mm),
+                extrusion_height_mm=dimensions["height"],
+            )
+
         if fillet_radius_mm is not None:
             max_radius = min(dimensions["length"], dimensions["width"]) / 2.0
             if float(fillet_radius_mm) <= 0 or float(fillet_radius_mm) >= max_radius:
@@ -105,6 +133,26 @@ def create_box(
                 model,
                 radius_mm=float(fillet_radius_mm),
                 extrusion_depth_mm=dimensions["height"],
+            )
+
+        if hole_count:
+            if int(hole_count) != 4 or hole_diameter_mm is None or hole_edge_offset_mm is None:
+                raise ValueError(
+                    "Automatic hole creation currently requires exactly four holes, "
+                    "a diameter, and an edge offset."
+                )
+            edge_clearance = max(
+                float(fillet_radius_mm or 0.0),
+                float(chamfer_distance_mm or 0.0),
+            )
+            apply_four_corner_through_holes(
+                model,
+                length_mm=dimensions["length"],
+                width_mm=dimensions["width"],
+                height_mm=dimensions["height"],
+                diameter_mm=float(hole_diameter_mm),
+                edge_offset_mm=float(hole_edge_offset_mm),
+                edge_clearance_mm=edge_clearance,
             )
 
         model.ClearSelection2(True)
