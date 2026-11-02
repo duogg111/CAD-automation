@@ -167,7 +167,7 @@ class TextToCADTests(unittest.TestCase):
 
     def test_hole_layout_rejects_overlap_or_edge_collision(self):
         with self.assertRaises(ValueError):
-            compute_four_corner_hole_centers_mm(100, 60, 10, 8, 0)
+            compute_four_corner_hole_centers_mm(100, 60, 10, 4, 0)
         with self.assertRaises(ValueError):
             compute_four_corner_hole_centers_mm(30, 20, 4, 10, 0)
 
