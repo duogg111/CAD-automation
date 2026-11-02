@@ -1,5 +1,6 @@
 import unittest
 from src.text_to_cad import ParseError, parse_description
+from src.solidworks_features import is_vertical_extrusion_edge
 
 class TextToCADTests(unittest.TestCase):
     def test_labelled_dimensions_and_features(self):
@@ -10,6 +11,7 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(plan.dimensions_mm, {"length": 100.0, "width": 60.0, "height": 30.0})
         self.assertEqual([item.kind for item in plan.features], ["fillet", "holes"])
         self.assertEqual(plan.features[0].parameters["radius_mm"], 5.0)
+        self.assertEqual(plan.features[0].parameters["target"], "four_vertical_outer_edges")
         self.assertEqual(plan.features[1].parameters["count"], 4)
         self.assertEqual(plan.features[1].parameters["diameter_mm"], 3.0)
 
@@ -34,6 +36,24 @@ class TextToCADTests(unittest.TestCase):
     def test_unsupported_shape_is_rejected(self):
         with self.assertRaises(ParseError):
             parse_description("Tao mot truc dai 100 mm rong 10 mm cao 10 mm")
+
+    def test_fillet_radius_must_fit_footprint(self):
+        with self.assertRaises(ParseError):
+            parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm bo goc R30")
+
+    def test_vertical_edge_classifier(self):
+        self.assertTrue(
+            is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 30)
+        )
+        self.assertTrue(
+            is_vertical_extrusion_edge((0.1, 0.2, 0.03), (0.1, 0.2, 0.0), 30)
+        )
+        self.assertFalse(
+            is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.1, 0.0, 0.0), 30)
+        )
+        self.assertFalse(
+            is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.0, 0.0, 0.02), 30)
+        )
 
 if __name__ == "__main__":
     unittest.main()
