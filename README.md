@@ -58,7 +58,7 @@ Bốn lỗ xuyên ở bốn góc:
 
 Một lỗ tại tọa độ X=20, Y=15 mm:
 
-    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 Y=15"
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 mm va Y=15 mm"
 
 Hai lỗ, cách tâm-tâm 40 mm theo chiều dài (trục X), đặt đối xứng quanh tâm mặt:
 
@@ -88,25 +88,26 @@ Kết hợp Chamfer, Fillet và Hole:
 
     python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm"
 
-The program prints the planned feature targets, hole centers, defaults and warnings. It asks for confirmation before invoking SOLIDWORKS.
+The program displays the plan, hole-center coordinates, default assumptions and warnings. It asks for confirmation before invoking SOLIDWORKS.
 
-## Feature behaviour
+## Hole placement conventions
 
-- Fillet R: four vertical outer corner edges.
-- Chamfer: four edges surrounding the top face. It is applied before the vertical Fillet.
-- Ordinary holes: circular sketch plus Cut-Extrude Through All.
-- Hole positions: four-corner layout; explicit XY coordinates; one hole at the face center; or two holes centered around the face with a center-to-center distance along X or Y.
-- Explicit XY coordinates are measured in mm from the lower-left origin of the top face, matching the base sketch's X/Y axes.
-- Other hole counts/layouts are preview-only; the program does not guess positions.
-- ISO metric tapped holes: M3 coarse (0.5 mm pitch, 2.5 mm tap drill) and M4 coarse (0.7 mm pitch, 3.3 mm tap drill), via Hole Wizard. Tap drill dimensions are loaded by the SOLIDWORKS ISO standard table.
-- Hole Wizard tapped holes carry thread/cosmetic-thread information; they are not a true modeled helical solid thread.
-- Hole positions are checked against part boundaries, Chamfer and rounded Fillet clearances.
+- X follows the 100 mm length; Y follows the 60 mm width.
+- XY coordinates are measured in mm from the lower-left origin of the top face.
+- Two-hole pitch patterns are symmetric about the face center. The default direction is X; use "theo chieu rong" for Y.
+- One hole without coordinates is proposed at the top-face center and this default is disclosed.
+- Four corner holes without an explicit edge offset are proposed 10 mm from each adjacent edge and this default is disclosed.
+- The program checks hole-to-edge, hole-to-Fillet/Chamfer and hole-to-hole clearance. Unsupported counts/layouts remain preview-only instead of being placed arbitrarily.
+
+## Thread representation
+
+ISO coarse metric M3 and M4 are planned with their standard pitch and tap-drill diameter. The implementation uses the SOLIDWORKS Hole Wizard tapped-hole data and cosmetic-thread callout. It does not create a helical solid thread. A true modeled thread would require a separate Thread-feature operation.
 
 ## Tests
 
     python -m unittest discover -s tests -v
 
-Parser and geometry-planning tests do not require SOLIDWORKS. The COM calls that create Chamfer, Fillet, Cut-Extrude and Hole Wizard features must be run and verified in the Windows/SOLIDWORKS installation.
+GitHub Actions runs these parser and geometry-planning tests on pushes to feature/natural-language-cad. They do not start SOLIDWORKS; Chamfer, Hole Wizard and the new COM calls still require verification in the Windows/SOLIDWORKS session.
 
 ## Units
 
