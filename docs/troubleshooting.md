@@ -6,7 +6,39 @@ Baseline environment: Windows + SOLIDWORKS 2026 + Python 3.14 64-bit + pywin32.
 
     python -m win32com.client.makepy
 
-Select SOLIDWORKS 2026 Type Library (22.0). The Fillet/Chamfer/Hole Wizard enum values used by this project are defined locally to avoid depending on the global constants cache.
+Select SOLIDWORKS 2026 Type Library (22.0). Generated interface wrappers are important for writable feature-data properties; the project early-binds IWizardHoleFeatureData2 rather than relying on a dynamic <unknown> dispatch object.
+
+## Hole Wizard: Property can not be set (ThreadDepth, ThreadEndCondition)
+
+FeatureManager.CreateDefinition(swFmHoleWzd) may return a late-bound pywin32 CDispatch whose displayed name is <unknown>. Its dynamic wrapper may not have property-put metadata, so code such as:
+
+    hole_data.ThreadDepth = height_m
+
+can fail in Python with:
+
+    AttributeError: Property '<unknown>.ThreadDepth' can not be set.
+
+This does not mean that ThreadDepth is absent from the SOLIDWORKS API. SOLIDWORKS documents it as a read/write property on IWizardHoleFeatureData2.
+
+The project fix is to bind the raw dispatch to the generated MakePy interface before calling InitializeHole or setting its properties:
+
+    hole_data = feature_manager.CreateDefinition(SW_FM_HOLE_WIZARD)
+    hole_data = _early_bind_solidworks_interface(
+        hole_data,
+        "IWizardHoleFeatureData2",
+        feature_manager,
+    )
+    hole_data.InitializeHole(...)
+
+The helper obtains the SOLIDWORKS type library from IFeatureManager.GetTypeInfo(), resolves the interface IID using the generated module's NamesToIIDMap, loads the generated interface class, and instantiates it with the COM dispatch. The generated wrapper performs the interface QueryInterface and exposes the property's setter.
+
+If early binding fails:
+1. Run python -m win32com.client.makepy.
+2. Select SOLIDWORKS 2026 Type Library (22.0).
+3. Confirm that MakePy completes without an error.
+4. Pull the latest feature/natural-language-cad branch and retry.
+
+Do not work around this exception by deleting all thread settings: the thread end condition and cosmetic-thread options still need to be set and verified.
 
 ## Zero-argument COM members and Member not found
 
@@ -24,31 +56,17 @@ The XY origin is the lower-left corner of the top face in the base sketch coordi
 
 ## ISO M3/M4 tapped Hole Wizard
 
-The project uses the feature-data workflow, not IFeatureManager.HoleWizard5:
+The implementation uses the feature-data workflow, not IFeatureManager.HoleWizard5:
+- CreateDefinition(swFmHoleWzd)
+- Early-bind to IWizardHoleFeatureData2
+- InitializeHole(swWzdTap, swStandardISO, swStandardISOTappedHole, "M3"/"M4", swEndCondThroughAll)
+- Set ThreadDepth, ThreadEndCondition, and CosmeticThreadType
+- Select the top-face placement point with SelectByRay
+- Call CreateFeature
 
-    hole_data = model.FeatureManager.CreateDefinition(SW_FM_HOLE_WIZARD)
-    hole_data.InitializeHole(
-        SW_WZD_TAP, SW_STANDARD_ISO, SW_STANDARD_ISO_TAPPED_HOLE,
-        "M3", SW_END_COND_THROUGH_ALL
-    )
-    hole_data.ThreadDepth = height_mm / 1000.0
-    hole_data.ThreadEndCondition = SW_END_THREAD_TYPE_THROUGH_ALL
-    hole_data.CosmeticThreadType = SW_COSMETIC_THREAD_WITH_CALLOUT
-    model.Extension.SelectByRay(...)
-    feature = model.FeatureManager.CreateFeature(hole_data)
+The ISO M3/M4 coarse sizes use the SOLIDWORKS Hole Wizard table. The tap-drill diameter is selected from that standard. Cosmetic thread annotation is not a true helical solid thread.
 
-Enum values used:
-- swFmHoleWzd = 25
-- swWzdTap = 4
-- swStandardISO = 8
-- swStandardISOTappedHole = 147
-- swEndCondThroughAll = 1
-- swEndThreadTypeTHROUGH_ALL = 1
-- swCosmeticThreadWithCallout = 1
-
-M3/M4 coarse thread sizes are supplied as "M3" / "M4" to the ISO Hole Wizard database. The tap-drill diameter is read from the SOLIDWORKS standard table. Cosmetic thread annotation is not a true helical solid thread.
-
-If Hole Wizard returns None, inspect the selected-face ray and confirm the installed SOLIDWORKS ISO Hole Wizard database contains the requested size. Capture the full traceback and the feature-data property values.
+If Hole Wizard returns None after this binding fix, inspect the selected-face ray and confirm the installed SOLIDWORKS ISO Hole Wizard database contains the requested size. Capture the full traceback and the feature-data property values.
 
 ## SaveAs3
 
