@@ -96,15 +96,31 @@ def create_box(
         if rebuild_result is False:
             raise RuntimeError("SOLIDWORKS reported that model rebuild failed.")
 
-        save_result = model.SaveAs3(output_path, 0, 1)
+        # SaveAs3 belongs to IModelDocExtension, not IModelDoc2.
+        # The final two arguments are COM [out] LONG values.
+        errors = win32com.client.VARIANT(
+            pythoncom.VT_BYREF | pythoncom.VT_I4, 0
+        )
+        warnings = win32com.client.VARIANT(
+            pythoncom.VT_BYREF | pythoncom.VT_I4, 0
+        )
+        extension = model.Extension
+        save_result = extension.SaveAs3(
+            output_path,
+            0,      # swSaveAsCurrentVersion
+            1,      # swSaveAsOptions_Silent
+            None,   # ExportData
+            None,   # AdvancedSaveAsOptions
+            errors,
+            warnings,
+        )
+        print("SaveAs3 result:", save_result)
+        print("Save error bitmask:", errors.value)
+        print("Save warning bitmask:", warnings.value)
         if not save_result:
-            try:
-                error_code = model.GetSaveError()
-                warning_code = model.GetSaveWarning()
-            except Exception:
-                error_code, warning_code = "unavailable", "unavailable"
             raise RuntimeError(
-                f"SOLIDWORKS failed to save. Error={error_code}; warning={warning_code}"
+                "SOLIDWORKS failed to save. "
+                f"Error bitmask={errors.value}; warning bitmask={warnings.value}"
             )
         if not os.path.isfile(output_path):
             raise FileNotFoundError(
