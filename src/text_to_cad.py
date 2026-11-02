@@ -192,11 +192,22 @@ def parse_description(description: str) -> CADPlan:
         if feature.kind == "holes" and feature.parameters.get("layout") == "four_corners":
             diameter = float(feature.parameters["diameter_mm"])
             offset = float(feature.parameters["edge_offset_mm"])
-            required_offset = diameter / 2.0 + max(fillet_radius, chamfer_distance)
+            hole_radius = diameter / 2.0
+            safety_margin = 0.25
+            corner_fillet_limit = (
+                fillet_radius
+                + (fillet_radius + hole_radius + safety_margin) / (2.0 ** 0.5)
+            )
+            straight_edge_limit = chamfer_distance + hole_radius + safety_margin
+            required_offset = max(
+                hole_radius + safety_margin,
+                corner_fillet_limit,
+                straight_edge_limit,
+            )
             if offset <= required_offset:
                 raise ParseError(
                     f"Khoang cach tam lo den mep phai lon hon {required_offset:g} mm "
-                    "de tranh giao voi lo va cac feature bo/vat canh."
+                    "de tranh giao voi lo, canh vat va cung Fillet o goc."
                 )
             if (
                 dimensions["length"] - 2.0 * offset <= diameter
