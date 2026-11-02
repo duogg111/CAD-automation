@@ -101,13 +101,15 @@ The program displays the plan, hole-center coordinates, default assumptions and 
 
 ## Thread representation
 
-ISO coarse metric M3 and M4 are planned with their standard pitch and tap-drill diameter. The implementation uses the SOLIDWORKS Hole Wizard tapped-hole data and cosmetic-thread callout. It does not create a helical solid thread. A true modeled thread would require a separate Thread-feature operation.
+ISO coarse metric M3 and M4 use their standard pitch and tap-drill diameter and are created as native SOLIDWORKS Hole Wizard tapped-hole features with a Through All thread end condition. They are not modeled as a true helical solid thread.
+
+The code early-binds IWizardHoleFeatureData2 before writing thread properties. CosmeticThreadType is read-only/not implemented as a setter in the SOLIDWORKS API version documented here, so cosmetic-thread display follows the installed SOLIDWORKS Hole Wizard/template defaults. The code does not claim to force a callout.
 
 ## Tests
 
     python -m unittest discover -s tests -v
 
-GitHub Actions runs these parser and geometry-planning tests on pushes to feature/natural-language-cad. They do not start SOLIDWORKS; Chamfer, Hole Wizard and the new COM calls still require verification in the Windows/SOLIDWORKS session.
+GitHub Actions runs parser and geometry-planning tests on pushes to feature/natural-language-cad. They do not start SOLIDWORKS; Chamfer, Hole Wizard and COM calls still require verification in the Windows/SOLIDWORKS session.
 
 ## Units
 
