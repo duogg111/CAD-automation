@@ -40,6 +40,7 @@ def main() -> None:
     fillet_radius = None
     chamfer_distance = None
     hole_diameter = None
+    hole_clearance_diameter = None
     hole_count = 0
     hole_offset = None
     hole_centers = None
@@ -62,6 +63,7 @@ def main() -> None:
         if hole.kind == "tapped_holes":
             tapped_hole_size = str(params["size"])
             hole_diameter = float(params["tap_drill_diameter_mm"])
+            hole_clearance_diameter = float(params["thread_diameter_mm"])
             print(
                 f"Tapped holes: {hole_count} x ISO {tapped_hole_size} coarse thread, "
                 f"tap drill {hole_diameter:g} mm, pitch {float(params['pitch_mm']):g} mm."
@@ -69,6 +71,7 @@ def main() -> None:
             print("Thread representation: Hole Wizard tapped-hole/cosmetic thread, not helical solid geometry.")
         else:
             hole_diameter = float(params["diameter_mm"])
+            hole_clearance_diameter = hole_diameter
             print(f"Through-holes: {hole_count} x diameter {hole_diameter:g} mm.")
 
         if layout == "unspecified":
@@ -85,7 +88,7 @@ def main() -> None:
                     center_distance_mm=params.get("center_distance_mm"),
                     axis=axis,
                     explicit_points=params.get("centers_mm"),
-                    diameter_mm=hole_diameter,
+                    diameter_mm=hole_clearance_diameter or hole_diameter,
                     fillet_radius_mm=fillet_radius or 0.0,
                     chamfer_distance_mm=chamfer_distance or 0.0,
                 )
