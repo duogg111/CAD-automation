@@ -240,8 +240,8 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
         else:
             warnings.append("Lo ren M4 mac dinh dung buoc ren ISO coarse 0,7 mm va mui khoan taro 3,3 mm.")
         warnings.append(
-            "Lo ren duoc tao bang Hole Wizard (tap hole) voi chi tiet ren/cosmetic thread; "
-            "khong phai ren xoan 3D duoc mo hinh hoa."
+            "Lo ren duoc tao bang Hole Wizard tap feature; khong phai ren xoan 3D. "
+            "Cach hien thi cosmetic thread theo mac dinh SOLIDWORKS."
         )
     else:
         holes = re.search(
