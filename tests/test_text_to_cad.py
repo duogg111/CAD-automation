@@ -202,5 +202,25 @@ class TextToCADTests(unittest.TestCase):
                 100, 60, 3, 9.5, fillet_radius_mm=5
             )
 
+
+    def test_execution_status_marks_non_four_holes_preview_only(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D3"
+        )
+        status = plan.to_dict()["execution_status"]
+        self.assertEqual(status["holes"], "preview_only")
+        self.assertEqual(status["fillet"], "not_requested")
+        self.assertEqual(status["chamfer"], "not_requested")
+
+    def test_execution_status_marks_requested_features(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, "
+            "vat canh 2 mm, bo goc R5, khoet 4 lo D3"
+        )
+        status = plan.to_dict()["execution_status"]
+        self.assertEqual(status["chamfer"], "supported_on_four_top_perimeter_edges")
+        self.assertEqual(status["fillet"], "supported_on_four_vertical_outer_edges")
+        self.assertEqual(status["holes"], "supported_for_four_corner_through_holes")
+
 if __name__ == "__main__":
     unittest.main()
