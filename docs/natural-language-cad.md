@@ -2,63 +2,79 @@
 
 ## Pipeline
 
-1. User enters a part description in Vietnamese.
-2. Text is normalised and parsed into a validated CAD plan.
-3. The user reviews the dimensions and requested features.
-4. The program creates a rectangular base solid in SOLIDWORKS.
-5. Requested vertical-corner Fillet is created as a separate feature.
+1. User enters a Vietnamese description.
+2. The parser validates the rectangular-prism dimensions and feature parameters.
+3. The program displays the planned feature targets and any placement defaults.
+4. The user confirms.
+5. SOLIDWORKS creates the base solid, optional top Chamfer, vertical Fillet, and optional four-hole Cut-Extrude.
 6. The model is rebuilt and saved as SLDPRT.
 
-## Supported descriptions
+## Example descriptions
 
 Base box:
 
-    Tao hop dai 100 mm, rong 60 mm, cao 30 mm
+    Tao hop dai 100 mm rong 60 mm cao 30 mm
 
-Four outside vertical corners, constant radius:
+Vertical corner Fillet:
 
     Tao hop dai 100 mm rong 60 mm cao 30 mm, bo goc R5
 
-Dimensions may also use a tuple:
+Top perimeter Chamfer:
 
-    Tao hop 100 x 60 x 30 mm, bo goc R5
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm
 
-## Fillet behaviour
+Four through-holes, default edge offset 10 mm:
 
-- bo goc R5 means a constant-radius R5 fillet on the four vertical outer edges of the rectangular prism.
-- It does not mean all 12 box edges.
-- The starter creates the rectangle on Front Plane and extrudes along global Z. Edge discovery checks endpoint coordinates and extrusion depth; it expects exactly four matching vertical edges.
-- The radius must be positive and strictly less than half the smaller footprint dimension.
-- Chamfer and holes are still preview-only.
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3
 
-## SOLIDWORKS API approach
+Four through-holes with explicit edge offset:
 
-The implementation uses the current simple fillet feature-data workflow:
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3 cach mep 8 mm
 
-1. Obtain the solid body's edges with IPartDoc::GetBodies2 and IBody2::GetEdges.
-2. Identify the four vertical edges with IEdge::GetStartVertex, IEdge::GetEndVertex, and IVertex::GetPoint.
-3. Select those edges using IEntity::Select4 and ISelectionMgr::CreateSelectData, with selection mark 1.
-4. Create the definition using IFeatureManager::CreateDefinition(swFmFillet).
-5. Initialize with swConstRadiusFillet, set the radius and circular profile, then call IFeatureManager::CreateFeature.
-6. Rebuild and save the part.
+Combined example:
 
-To avoid a missing win32com.client.constants entry, the code defines the three SwConst enum values used here locally: swFmFillet = 1, swConstRadiusFillet = 0, and swFeatureFilletCircular = 0. These are enum identifiers, not feature parameters.
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm
 
-FeatureFillet3 is not used because SOLIDWORKS documents it as obsolete for constant-radius fillets.
+## Feature definitions
 
-## Run
+### Chamfer
 
-From the repository root:
+- The phrase "vat canh 2 mm" is defined in this starter as a symmetric 2 mm chamfer on the four edges surrounding the top planar face.
+- The Chamfer is created before vertical-corner Fillet.
+- The code uses the SOLIDWORKS simple fillet/chamfer feature data object. For an offset-face chamfer, SOLIDWORKS documents swConstRadiusFillet initialization, swFeatureFilletConicRhoZeroChamfer profile, DefaultRadius as the symmetric offset distance, and OverflowType.
+- Chamfer distance must be less than half the smallest of length, width, and height.
 
-    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, bo goc R5"
+### Fillet
 
-Run tests without starting SOLIDWORKS:
+- "bo goc R5" means a constant-radius R5 fillet on the four vertical outside corner edges.
+- It does not mean all twelve edges.
+- Edge discovery accepts shortened vertical edges so that it still works after the top perimeter Chamfer.
+- Radius must be positive and less than half the smaller footprint dimension.
+
+### Four through-holes
+
+- Automatic hole creation currently supports exactly four holes.
+- The holes are placed symmetrically at (offset, offset), (length-offset, offset), (length-offset, width-offset), and (offset, width-offset) in the top sketch plane.
+- Each hole is a Through All cut.
+- If no edge offset is stated, the planner uses 10 mm and displays a warning. The user can explicitly say "cach mep 8 mm", for example.
+- The center offset must clear the hole radius and the larger of the requested Fillet radius or Chamfer distance.
+- Other counts/layouts are parsed but stay preview-only until positioning rules are implemented.
+
+## SOLIDWORKS API workflow
+
+- Base: SketchManager.CreateCornerRectangle and FeatureExtrusion2.
+- Chamfer: select the four top perimeter edges with mark 1; create the simple fillet/chamfer feature data using CreateDefinition(swFmFillet), Initialize(swConstRadiusFillet), set the zero-rho chamfer profile, offset distance and overflow type; then CreateFeature.
+- Fillet: select the four vertical edges and create a constant-radius simple fillet feature.
+- Holes: select the top planar face by a point at its center, create four circles in one sketch using CreateCircleByRadius, then use FeatureCut4 with swEndCondThroughAll.
+
+## Run and test
+
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm"
+
+Run parser and geometry-plan tests without SOLIDWORKS:
 
     python -m unittest discover -s tests -v
 
-## Current execution boundary
+## Verification boundary
 
-- Rectangular base solid: supported by the COM starter.
-- Four-edge constant-radius Fillet: implemented; must be verified on the user's SOLIDWORKS installation.
-- Chamfer and holes: parsed into the plan, preview-only.
-- Missing, non-positive, or oversized dimensions/radii are rejected instead of guessed.
+The parser, edge classifiers and hole-layout calculations have unit tests. The actual COM Chamfer, Fillet, face selection and Cut-Extrude calls require a real SOLIDWORKS 2026 session and have not been executed from this development environment.
