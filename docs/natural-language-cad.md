@@ -75,7 +75,7 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 - The supported tap sizes are ISO metric coarse M3 and M4.
 - M3: nominal thread diameter 3 mm, coarse pitch 0.5 mm, standard tap drill 2.5 mm.
 - M4: nominal thread diameter 4 mm, coarse pitch 0.7 mm, standard tap drill 3.3 mm.
-- The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), resolves the registered sldworks.tlb using its LIBID and early-binds it to the generated IWizardHoleFeatureData2 interface, initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, sets the thread depth and thread end condition, selects the top-face placement point with SelectByRay, then calls CreateFeature.
+- The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), resolves the registered sldworks.tlb using its LIBID and early-binds it to the generated IWizardHoleFeatureData2 interface, initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, sets the thread end condition to Through All, selects the top-face placement point with SelectByRay, then calls CreateFeature. It deliberately does not assign ThreadDepth: the thread is Through All, and the redundant ThreadDepth setter caused RPC_E_SERVERFAULT on the tested SOLIDWORKS 2026 workflow.
 - An explicitly specified non-coarse pitch is rejected; only ISO coarse M3 and M4 are included in this milestone.
 - The thread end condition is Through All. CosmeticThreadType is read-only/not implemented as a setter in the documented SOLIDWORKS API, so display of cosmetic thread/callout follows SOLIDWORKS defaults and is not forced by this automation.
 - This is a Hole Wizard tapped-hole feature, not a modeled helical solid thread. For true 3D thread geometry, a separate Thread feature workflow would be required.
@@ -86,7 +86,7 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 - Chamfer: select top perimeter edges, create simple fillet/chamfer feature data, then CreateFeature.
 - Fillet: select the four vertical edges and create a constant-radius simple fillet feature.
 - Ordinary holes: select the top face, create circles in one sketch, then FeatureCut4 with swEndCondThroughAll.
-- Tapped holes: CreateDefinition(swFmHoleWzd) → early-bind to IWizardHoleFeatureData2 → InitializeHole → set ThreadDepth and ThreadEndCondition → select placement point with IModelDocExtension.SelectByRay → CreateFeature.
+- Tapped holes: CreateDefinition(swFmHoleWzd) → early-bind to IWizardHoleFeatureData2 → InitializeHole → set ThreadEndCondition to Through All (do not set ThreadDepth for this Through All case) → select placement point with IModelDocExtension.SelectByRay → CreateFeature.
 
 ## Run and test
 
