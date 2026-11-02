@@ -1,15 +1,13 @@
 # SOLIDWORKS Automation – Python COM
 
-Dự án tự động tạo Part trong SOLIDWORKS bằng Python và COM API. Nhánh feature/natural-language-cad bổ sung hướng Text-to-CAD: nhập mô tả tiếng Việt, xem kế hoạch CAD, xác nhận rồi tạo khối cơ sở.
+Dự án tạo Part tự động trong SOLIDWORKS bằng Python và COM API. Nhánh phát triển feature/natural-language-cad bổ sung Text-to-CAD: nhập mô tả tiếng Việt, xem kế hoạch, xác nhận rồi tạo hình.
 
-## Môi trường đã kiểm chứng cho starter gốc
+## Môi trường baseline
 
 - Windows, SOLIDWORKS 2026
 - Python 3.14 64-bit
 - pywin32
 - VS Code
-
-Các phiên bản khác có thể cần điều chỉnh COM API.
 
 ## Cấu trúc
 
@@ -29,49 +27,59 @@ Các phiên bản khác có thể cần điều chỉnh COM API.
 
 ## Cài đặt
 
-Mở PowerShell tại thư mục dự án:
-
     py -3.14 -m venv .venv
     .\.venv\Scripts\Activate.ps1
     python -m pip install --upgrade pip
     pip install -r requirements.txt
 
-Nếu cần tạo COM interface wrapper để có type information/casting, chạy:
+Tạo COM wrapper nếu cần:
 
     python -m win32com.client.makepy
 
-Chọn SOLIDWORKS 2026 Type Library (22.0). Enum values dùng cho Fillet hiện được định nghĩa trực tiếp trong helper để không phụ thuộc win32com.client.constants.
+Chọn SOLIDWORKS 2026 Type Library (22.0).
 
-## Text-to-CAD
+## Text-to-CAD examples
 
-Tạo hộp đơn giản:
+Hộp cơ bản:
 
     python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm"
 
-Tạo hộp và bo bốn cạnh đứng ngoài:
+Fillet bốn cạnh đứng:
 
     python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, bo goc R5"
 
-Chương trình hiển thị CAD plan và yêu cầu xác nhận trước khi gọi SOLIDWORKS. Fillet R5 được áp dụng cho bốn cạnh đứng ở bốn góc ngoài của hộp. Đây không phải lệnh bo tất cả 12 cạnh.
+Chamfer bốn cạnh quanh mặt trên:
 
-Chỉ định file đầu ra:
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm"
 
-    python -m src.run_text_to_cad "Tao hop dai 120 mm rong 80 mm cao 40 mm, bo goc R5" --output "output/Hop_120.SLDPRT"
+Bốn lỗ xuyên, mặc định tâm cách mỗi mép 10 mm:
 
-### Phạm vi hiện tại
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3"
 
-- Hỗ trợ khối hộp chữ nhật và kích thước dài/rộng/cao hoặc bộ ba 100 x 60 x 30 mm.
-- Fillet bán kính không đổi trên bốn cạnh đứng ngoài được triển khai bằng ISimpleFilletFeatureData2.
-- Chamfer và holes mới chỉ được phân tích; chưa thực thi.
-- Parser hiện dùng quy tắc, không gọi dịch vụ AI.
-- Bán kính Fillet phải nhỏ hơn một nửa cạnh ngắn của mặt đáy.
+Chỉ định khoảng cách mép 8 mm:
 
-## Chạy kiểm thử không cần SOLIDWORKS
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3 cach mep 8 mm"
+
+Kết hợp Chamfer, Fillet và Hole:
+
+    python -m src.run_text_to_cad "Tao hop dai 100 mm rong 60 mm cao 30 mm, vat canh 2 mm, bo goc R5, khoet 4 lo D3 cach mep 10 mm"
+
+The program prints the planned feature targets, hole centers, defaults and warnings. It asks for confirmation before opening SOLIDWORKS operations.
+
+## Feature behaviour
+
+- Fillet R: four vertical outer corner edges.
+- Chamfer: four edges surrounding the top face. It is applied before the vertical Fillet so the corner-edge selector can identify the shortened vertical edges.
+- Four holes: four through-holes in a symmetric corner layout; each center is measured from the adjacent two footprint edges. If no edge offset is given, 10 mm is used and explicitly shown in the plan.
+- Other hole counts/layouts: preview only; not silently positioned.
+- Hole diameter and offsets are checked against the part footprint and Chamfer/Fillet clearances.
+
+## Tests
 
     python -m unittest discover -s tests -v
 
-Các bài test parser và bộ lọc hình học không gọi COM. Việc kiểm thử Feature Fillet thực tế vẫn cần SOLIDWORKS 2026 trên Windows.
+Parser and geometry-planning tests do not require SOLIDWORKS. The COM calls that create Chamfer, Fillet and Cut-Extrude must still be run and verified on the Windows/SOLIDWORKS installation.
 
-## Đơn vị
+## Units
 
-Thông số đầu vào dùng mm. SOLIDWORKS API nhận đơn vị mét; code chuyển đổi trước khi gọi API.
+User-facing dimensions are in mm. SOLIDWORKS geometry API values are converted to metres before the COM calls.
