@@ -1,7 +1,7 @@
 """Parse a small, explicit subset of Vietnamese part descriptions.
 
-This module creates a CAD plan; it does not execute geometry. Execution is
-separate so unsupported or ambiguous features cannot silently create a wrong model.
+This module creates a validated CAD plan. SOLIDWORKS geometry execution is
+kept separate so unsupported or ambiguous features cannot silently create a wrong model.
 """
 from __future__ import annotations
 import json
@@ -32,7 +32,9 @@ class CADPlan:
         data = asdict(self)
         data["execution_status"] = {
             "base_solid": "supported_by_existing_com_script",
-            "additional_features": "preview_only",
+            "fillet": "supported_on_four_vertical_outer_edges",
+            "chamfer": "preview_only",
+            "holes": "preview_only",
         }
         return data
 
@@ -82,17 +84,27 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
     features: list[Feature] = []
     warnings: list[str] = []
     fillet = re.search(
-        rf"\bbo\s*(?:goc|canh)?\s*(?:ban kinh\s*)?(?:r\s*)?{NUMBER}\s*(?:mm)?\b",
+        rf"\bbo\s*(?:tron\s*)?(?:goc|canh)?\s*(?:ban kinh\s*)?(?:r\s*)?{NUMBER}\s*(?:mm)?\b",
         text,
     )
     if fillet:
-        features.append(Feature("fillet", {"radius_mm": _number(fillet.group(1))}))
+        radius = _number(fillet.group(1))
+        if radius <= 0:
+            raise ParseError("Ban kinh Fillet phai lon hon 0 mm.")
+        features.append(
+            Feature("fillet", {"radius_mm": radius, "target": "four_vertical_outer_edges"})
+        )
+
     chamfer = re.search(
         rf"\b(?:vat canh|chamfer)\s*(?:kich thuoc\s*)?{NUMBER}\s*(?:mm)?\b",
         text,
     )
     if chamfer:
-        features.append(Feature("chamfer", {"distance_mm": _number(chamfer.group(1))}))
+        distance = _number(chamfer.group(1))
+        if distance <= 0:
+            raise ParseError("Kich thuoc Chamfer phai lon hon 0 mm.")
+        features.append(Feature("chamfer", {"distance_mm": distance}))
+
     holes = re.search(
         rf"(?:\b(\d+)\s*lo\b|\blo\s*(\d+)\b).*?"
         rf"(?:duong kinh|phi|d\s*=?\s*)\s*{NUMBER}\s*(?:mm)?\b",
@@ -104,11 +116,11 @@ def _parse_features(text: str) -> tuple[list[Feature], list[str]]:
         if count <= 0 or diameter <= 0:
             raise ParseError("So luong lo va duong kinh phai lon hon 0.")
         features.append(Feature("holes", {"count": count, "diameter_mm": diameter}))
-    if any(token in text for token in ("bo ", "vat canh", "chamfer", " lo ")) and not features:
-        warnings.append("Co yeu cau feature nhung parser chua tach duoc tham so.")
-    if features:
+
+    unsupported = [feature.kind for feature in features if feature.kind != "fillet"]
+    if unsupported:
         warnings.append(
-            "Fillet, chamfer va holes hien chi duoc phan tich; chua duoc gui len SOLIDWORKS."
+            "Chamfer va holes moi chi duoc phan tich; chua duoc gui len SOLIDWORKS."
         )
     return features, warnings
 
@@ -118,9 +130,20 @@ def parse_description(description: str) -> CADPlan:
         raise ParseError("Mo ta khong duoc de trong.")
     text = _normalise(description)
     if not re.search(r"\b(hop|khoi hop|box|block)\b", text):
-        raise ParseError("Phien ban dau tien chi ho tro khoi hop chu nhat.")
+        raise ParseError("Phien ban nay chi ho tro khoi hop chu nhat.")
     dimensions = _parse_dimensions(text)
     features, warnings = _parse_features(text)
+
+    for feature in features:
+        if feature.kind == "fillet":
+            radius = float(feature.parameters["radius_mm"])
+            max_radius = min(dimensions["length"], dimensions["width"]) / 2.0
+            if radius >= max_radius:
+                raise ParseError(
+                    f"Fillet R{radius:g} mm qua lon. "
+                    f"Voi hop nay, ban kinh phai nho hon {max_radius:g} mm "
+                    "de bo bon canh dung."
+                )
     return CADPlan(description.strip(), "rectangular_prism", dimensions, features, warnings)
 
 def plan_as_json(description: str) -> str:
