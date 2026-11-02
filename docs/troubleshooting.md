@@ -1,109 +1,59 @@
-# Troubleshooting – lỗi đã gặp và cách xử lý
+# Troubleshooting – SOLIDWORKS COM
 
-Các mục dưới đây được ghi lại từ lần chạy thành công trong môi trường cụ thể:
-Windows + SOLIDWORKS 2026 (Type Library 22.0) + Python 3.14 64-bit + pywin32.
+The baseline environment is Windows + SOLIDWORKS 2026 (Type Library 22.0) + Python 3.14 64-bit + pywin32.
 
 ## 1. MakePy / COM wrapper
 
-**Triệu chứng:** `EnsureDispatch` báo không thể tự động chạy MakePy.
+Run:
 
-**Cách đã làm:** chạy:
+    python -m win32com.client.makepy
 
-```powershell
-python -m win32com.client.makepy
-```
+Select SOLIDWORKS 2026 Type Library (22.0). The Fillet implementation reads enum values from win32com.client.constants, so this type library must be generated/registered.
 
-Chọn **SOLIDWORKS 2026 Type Library (22.0)**.
+## 2. Part template
 
-Sau đó kết nối bằng:
+    template = sw.GetDocumentTemplate(1, "", 0, 0.0, 0.0)
+    model = sw.NewDocument(template, 0, 0.0, 0.0)
 
-```python
-sw = win32com.client.Dispatch("SldWorks.Application")
-```
+In this workflow, 1 is swDocPART.
 
-## 2. Lấy template Part
+## 3. Entity selection
 
-**Cách đã chạy thành công:**
+For stable plane/sketch selection, use feature objects:
 
-```python
-template = sw.GetDocumentTemplate(1, "", 0, 0.0, 0.0)
-model = sw.NewDocument(template, 0, 0.0, 0.0)
-```
+    plane = model.FeatureByName("Front Plane")
+    plane.Select2(False, 0)
 
-Trong trường hợp này, `1` là `swDocPART`.
+For edge selection, IEntity.Select4 requires a real ISelectData object. Do not pass Python None:
 
-Kiểm tra template khác `None` và đường dẫn tồn tại trước khi gọi `NewDocument`.
+    selection_data = model.SelectionManager.CreateSelectData()
+    selection_data.Mark = 1
+    edge.Select4(False, selection_data)
 
-## 3. `SelectByID2` báo COM Type mismatch
+Selection mark 1 is used for edge selections defining a simple Fillet.
 
-**Triệu chứng:** `com_error(-2147352571, 'Type mismatch.', None, 8)` khi chọn Front Plane hoặc Sketch.
+## 4. Creating a constant-radius Fillet
 
-**Cách đã chạy thành công trong dự án:**
+Use:
 
-```python
-plane = model.FeatureByName("Front Plane")
-plane.Select2(False, 0)
+    fillet_data = model.FeatureManager.CreateDefinition(constants.swFmFillet)
+    fillet_data.Initialize(constants.swConstRadiusFillet)
+    fillet_data.DefaultRadius = radius_mm / 1000.0
+    fillet_data.ConicTypeForCrossSectionProfile = constants.swFeatureFilletCircular
+    fillet_feature = model.FeatureManager.CreateFeature(fillet_data)
 
-sketch = model.FeatureByName("Sketch1")
-sketch.Select2(False, 0)
-```
+For current API guidance, see the SOLIDWORKS ISimpleFilletFeatureData2 and IFeatureManager::CreateFeature documentation. FeatureFillet3 is obsolete for constant-radius fillets.
 
-Tránh dùng lại lời gọi `SelectByID2(..., None, ...)` trong đúng môi trường này khi chưa xác minh kiểu COM của tham số Callout.
+## 5. SaveAs3
 
-## 4. `EditRebuild3()` báo `'bool' object is not callable`
+SaveAs3 belongs to model.Extension and takes seven arguments. The optional COM interface arguments are passed as explicit null VT_DISPATCH variants in this project to avoid the pywin32 late-binding type mismatch previously observed. The last two by-reference integer variants receive error and warning bitmasks.
 
-**Triệu chứng:**
+## 6. Rebuild and diagnostics
 
-```text
-TypeError: 'bool' object is not callable
-```
+    rebuild_result = model.ForceRebuild3(False)
 
-Traceback trỏ tới `model.EditRebuild3()`.
+After a feature is created, check the returned feature is not None, rebuild the model, then save and verify the output file exists.
 
-**Cách đã chạy thành công:**
+## 7. General rule
 
-```python
-rebuild_result = model.ForceRebuild3(False)
-```
-
-Lưu ý: đây là kết quả kiểm chứng của wrapper/môi trường hiện tại, không phải khẳng định mọi COM wrapper đều ánh xạ giống nhau.
-
-## 5. Lưu file bằng `IModelDocExtension.SaveAs3`
-
-Theo API Help, `SaveAs3` thuộc `model.Extension` và có 7 tham số:
-Name, Version, Options, ExportData, AdvancedSaveAsOptions, Errors, Warnings.
-
-Với pywin32 late binding, không truyền Python `None` cho các tham số COM object tùy chọn nếu SOLIDWORKS yêu cầu một COM null interface. Dùng `VT_DISPATCH` có con trỏ null:
-
-```python
-null_object = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
-```
-
-Ví dụ:
-
-```python
-errors = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
-warnings = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
-null_export_data = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
-null_advanced_options = win32com.client.VARIANT(pythoncom.VT_DISPATCH, None)
-
-save_result = model.Extension.SaveAs3(
-    PART_PATH, 0, 1,
-    null_export_data, null_advanced_options,
-    errors, warnings,
-)
-print(save_result, errors.value, warnings.value)
-```
-
-Nếu kết quả false, các giá trị `errors.value` và `warnings.value` chứa bitmask từ SOLIDWORKS. Sau khi lưu, kiểm tra thêm `os.path.isfile(PART_PATH)`.
-
-**Triệu chứng đã gặp:** `pywintypes.com_error: (-2147352571, 'Type mismatch.', None, 4)` ở tham số thứ tư `ExportData`. Cần dùng COM null dispatch thay vì Python `None`. Áp dụng cách này cho cả hai tham số object tùy chọn trong lời gọi `SaveAs3`.
-
-## 6. Quy tắc xử lý lỗi lần sau
-
-1. Không sửa nhiều bước cùng lúc.
-2. Giữ lại bước đã chạy thành công.
-3. In log trước và sau mỗi lời gọi COM quan trọng.
-4. Lấy traceback đầy đủ bằng `traceback.print_exc()`.
-5. Ghi lại phiên bản SOLIDWORKS, Python và pywin32 khi lỗi khác môi trường.
-6. Đối chiếu API Help của đúng phiên bản trước khi đổi chữ ký hàm hoặc tham số.
+Change one operation at a time, preserve the last working commit, print the full traceback, and record SOLIDWORKS/Python/pywin32 versions for any COM error.
