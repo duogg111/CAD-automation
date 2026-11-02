@@ -368,24 +368,29 @@ class TextToCADTests(unittest.TestCase):
             )
 
 
-    def test_hole_wizard_interface_uses_generated_early_bound_wrapper(self):
+    def test_hole_wizard_interface_uses_registered_sldworks_typelib(self):
         class FakeObject:
             def __init__(self):
                 self._oleobj_ = object()
 
-        class FakeTypeInfo:
-            def GetContainingTypeLib(self):
-                return FakeTypeLibrary(), 0
+        class FakeTypeLibSpec:
+            clsid = "{83A33D31-27C5-11CE-BFD4-00400513BB57}"
+            lcid = 0
+            major = "22"
+            minor = "0"
+            dll = r"C:\Program Files\SOLIDWORKS\sldworks.tlb"
+            ver_desc = "SOLIDWORKS 2026"
 
-        class FakeTypeLibrary:
-            def GetLibAttr(self):
-                return ("lib-guid", 0, 0, 22, 0, 0)
+            def Resolve(self):
+                # Simulate the actual typelib file reporting its internal version.
+                self.major = 34
+                self.minor = 0
+                return 1
 
-        class FakeTypeInfoSource:
-            def __init__(self):
-                self._oleobj_ = self
-            def GetTypeInfo(self):
-                return FakeTypeInfo()
+        class FakeSelectTlb:
+            @staticmethod
+            def EnumTlbs():
+                return [FakeTypeLibSpec()]
 
         class FakeInterface:
             def __init__(self, ole_object):
@@ -401,20 +406,31 @@ class TextToCADTests(unittest.TestCase):
             def EnsureModule(self, guid, lcid, major, minor):
                 self.asserted_typelib = (guid, lcid, major, minor)
                 return FakeRootModule()
+
             def GetModuleForCLSID(self, iid):
                 self.asserted_iid = iid
                 return FakeInterfaceModule()
+
+        class FakePythonCom:
+            def LoadRegTypeLib(self, *args):
+                raise AssertionError(
+                    "Resolve() should load the registered typelib from its file."
+                )
 
         raw = FakeObject()
         cache = FakeGenCache()
         typed = _wrap_generated_interface(
             raw,
             "IWizardHoleFeatureData2",
-            FakeTypeInfoSource(),
             cache,
+            FakeSelectTlb,
+            FakePythonCom,
         )
         self.assertIs(typed._oleobj_, raw._oleobj_)
-        self.assertEqual(cache.asserted_typelib, ("lib-guid", 0, 22, 0))
+        self.assertEqual(
+            cache.asserted_typelib,
+            ("{83A33D31-27C5-11CE-BFD4-00400513BB57}", 0, 34, 0),
+        )
         self.assertEqual(cache.asserted_iid, "interface-iid")
 
 if __name__ == "__main__":
