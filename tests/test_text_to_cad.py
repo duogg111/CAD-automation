@@ -161,15 +161,15 @@ class TextToCADTests(unittest.TestCase):
 
     def test_four_corner_hole_centers(self):
         self.assertEqual(
-            compute_four_corner_hole_centers_mm(100, 60, 3, 10, 5),
+            compute_four_corner_hole_centers_mm(100, 60, 3, 10, fillet_radius_mm=5),
             [(10, 10), (90, 10), (90, 50), (10, 50)],
         )
 
     def test_hole_layout_rejects_overlap_or_edge_collision(self):
         with self.assertRaises(ValueError):
-            compute_four_corner_hole_centers_mm(100, 60, 10, 4, 0)
+            compute_four_corner_hole_centers_mm(100, 60, 10, 4, fillet_radius_mm=0)
         with self.assertRaises(ValueError):
-            compute_four_corner_hole_centers_mm(30, 20, 4, 10, 0)
+            compute_four_corner_hole_centers_mm(30, 20, 4, 10, fillet_radius_mm=0)
 
     def test_zero_argument_com_member_wrapper(self):
         class Fake:
@@ -194,6 +194,13 @@ class TextToCADTests(unittest.TestCase):
                 return self.dispatch_value
         obj = FakeComObject()
         self.assertIs(_call_member(obj, "GetStartVertex"), obj.dispatch_value)
+
+
+    def test_rounded_corner_requires_extra_hole_offset(self):
+        with self.assertRaises(ValueError):
+            compute_four_corner_hole_centers_mm(
+                100, 60, 3, 9.5, fillet_radius_mm=5
+            )
 
 if __name__ == "__main__":
     unittest.main()
