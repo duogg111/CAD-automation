@@ -1,14 +1,19 @@
 """SOLIDWORKS feature helpers for the rectangular-prism starter."""
 from __future__ import annotations
+import types
 from typing import Any
 
 def _call_member(obj: Any, name: str, *args: Any) -> Any:
-    """Call a pywin32 method whether exposed callable or auto-invoked (zero args)."""
+    """Read zero-argument COM members as properties; call only real Python methods.
+
+    pywin32 late-bound IDispatch objects can be callable even when a
+    zero-argument SOLIDWORKS method has already been invoked by attribute access.
+    """
     member = getattr(obj, name)
-    if callable(member):
-        return member(*args)
     if args:
-        raise TypeError(f"COM member {name} is not callable but arguments were supplied.")
+        return member(*args)
+    if isinstance(member, types.MethodType):
+        return member()
     return member
 
 def _as_items(value: Any) -> list[Any]:
@@ -147,8 +152,6 @@ def apply_vertical_edge_fillet(
 
     fillet_data.DefaultRadius = radius_mm / 1000.0
     fillet_data.ConicTypeForCrossSectionProfile = circular_profile_type
-    # Do not set PropagateToTangentFaces here: that property belongs to the
-    # variable-fillet feature-data interface, not the simple-fillet interface.
 
     fillet_feature = feature_manager.CreateFeature(fillet_data)
     model.ClearSelection2(True)
