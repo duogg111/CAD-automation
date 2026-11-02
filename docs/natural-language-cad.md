@@ -29,7 +29,7 @@ Four through-holes, default edge offset 10 mm:
 
 Single hole at explicit XY coordinates:
 
-    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 Y=15
+    Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5 tai X=20 mm va Y=15 mm
 
 Two holes centered 40 mm apart along X, symmetric about the face center:
 
@@ -59,16 +59,16 @@ ISO tapped holes:
 
 ### Automatic layouts
 
-- four_corners: for four holes, the parser uses the specified edge offset or proposes 10 mm and displays a warning.
-- center_to_center_x: for two holes, places them symmetrically about the face center, separated along X; default pattern axis is X.
-- center_to_center_y: same but along Y when the description includes "theo chieu rong".
-- single_center: one hole at the center of the top face.
-- explicit_points: one coordinate pair per hole, e.g. (20, 15) and (80, 15).
+- Four corners: for four holes, the parser uses the specified edge offset or proposes 10 mm and displays a warning.
+- Center-to-center X: for two holes, places them symmetrically about the face center, separated along X.
+- Center-to-center Y: same but along Y when the description includes "theo chieu rong".
+- Single center: one hole without coordinates is proposed at the center of the top face; this default is explicitly disclosed.
+- Explicit points: one coordinate pair per hole, e.g. (20, 15) and (80, 15); coordinate notation X=20 mm va Y=15 mm is also accepted.
 - Other counts/layouts remain preview-only until a deterministic placement rule is provided.
 
 ### Ordinary through-holes
 
-Ordinary round holes are drawn together in one sketch on the top face and cut with FeatureCut4 using the Through All end condition. The planner checks hole diameter, edge clearance, Chamfer clearance and rounded-corner Fillet clearance.
+Ordinary round holes are drawn together in one sketch on the top face and cut with FeatureCut4 using the Through All end condition. The planner checks hole diameter, edge clearance, Chamfer clearance, rounded-corner Fillet clearance and minimum center-to-center separation.
 
 ### ISO M3/M4 tapped holes
 
@@ -76,6 +76,7 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 - M3: nominal thread diameter 3 mm, coarse pitch 0.5 mm, standard tap drill 2.5 mm.
 - M4: nominal thread diameter 4 mm, coarse pitch 0.7 mm, standard tap drill 3.3 mm.
 - The implementation creates a Hole Wizard feature data object with CreateDefinition(swFmHoleWzd), initializes it as a straight tap (swWzdTap) using the ISO standard and swStandardISOTappedHole, selects the top-face placement point with SelectByRay, then calls CreateFeature.
+- An explicitly specified non-coarse pitch is rejected; only ISO coarse M3 and M4 are included in this milestone.
 - Thread depth and thread end condition are set to the part's Through All depth. Cosmetic thread display with callout is requested.
 - This is a Hole Wizard tapped-hole/cosmetic-thread feature, not a modeled helical solid thread. For true 3D thread geometry, a separate Thread feature workflow would be required.
 
@@ -96,6 +97,8 @@ Ordinary round holes are drawn together in one sketch on the top face and cut wi
 Run parser and geometry-plan tests without SOLIDWORKS:
 
     python -m unittest discover -s tests -v
+
+GitHub Actions runs the unit tests on the feature branch. These tests do not start SOLIDWORKS.
 
 ## Verification boundary
 
