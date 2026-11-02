@@ -262,21 +262,39 @@ def compute_four_corner_hole_centers_mm(
     width_mm: float,
     diameter_mm: float,
     edge_offset_mm: float,
-    edge_clearance_mm: float = 0.0,
+    fillet_radius_mm: float = 0.0,
+    chamfer_distance_mm: float = 0.0,
 ) -> list[tuple[float, float]]:
-    """Return four hole centers measured from the two adjacent footprint edges."""
+    """Return four corner centers after checking hole, chamfer and round-corner clearance."""
     length = float(length_mm)
     width = float(width_mm)
     diameter = float(diameter_mm)
     offset = float(edge_offset_mm)
-    clearance = float(edge_clearance_mm)
-    if min(length, width, diameter, offset) <= 0 or clearance < 0:
-        raise ValueError("Hole dimensions and offset must be positive.")
-    required_offset = diameter / 2.0 + clearance
+    fillet_radius = float(fillet_radius_mm)
+    chamfer_distance = float(chamfer_distance_mm)
+    if (
+        min(length, width, diameter, offset) <= 0
+        or fillet_radius < 0
+        or chamfer_distance < 0
+    ):
+        raise ValueError("Hole dimensions and offset must be positive; feature clearances cannot be negative.")
+
+    hole_radius = diameter / 2.0
+    safety_margin = 0.25
+    corner_fillet_limit = (
+        fillet_radius
+        + (fillet_radius + hole_radius + safety_margin) / (2.0 ** 0.5)
+    )
+    straight_edge_limit = chamfer_distance + hole_radius + safety_margin
+    required_offset = max(
+        hole_radius + safety_margin,
+        corner_fillet_limit,
+        straight_edge_limit,
+    )
     if offset <= required_offset:
         raise ValueError(
             f"Hole center offset must exceed {required_offset:g} mm "
-            "to clear the hole radius and nearby edge features."
+            "to clear the hole, top Chamfer and rounded corner boundary."
         )
     if length - 2.0 * offset <= diameter or width - 2.0 * offset <= diameter:
         raise ValueError(
@@ -298,7 +316,8 @@ def apply_four_corner_through_holes(
     height_mm: float,
     diameter_mm: float,
     edge_offset_mm: float,
-    edge_clearance_mm: float = 0.0,
+    fillet_radius_mm: float = 0.0,
+    chamfer_distance_mm: float = 0.0,
 ) -> Any:
     """Cut four through-holes from the top face using one circular sketch."""
     diameter_mm = float(diameter_mm)
@@ -307,7 +326,12 @@ def apply_four_corner_through_holes(
         raise ValueError("Hole diameter and part height must be greater than zero.")
 
     centers = compute_four_corner_hole_centers_mm(
-        length_mm, width_mm, diameter_mm, edge_offset_mm, edge_clearance_mm
+        length_mm,
+        width_mm,
+        diameter_mm,
+        edge_offset_mm,
+        fillet_radius_mm,
+        chamfer_distance_mm,
     )
 
     import pythoncom
