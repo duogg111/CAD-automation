@@ -353,5 +353,13 @@ class TextToCADTests(unittest.TestCase):
                 "Tao hop dai 100 mm rong 60 mm cao 30 mm, lo ren M3x0.35"
             )
 
+
+    def test_single_hole_default_center_is_disclosed(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 1 lo D5"
+        )
+        self.assertEqual(plan.features[0].parameters["layout"], "single_center")
+        self.assertTrue(any("tam mat tren" in warning for warning in plan.warnings))
+
 if __name__ == "__main__":
     unittest.main()
