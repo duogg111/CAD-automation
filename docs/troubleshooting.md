@@ -32,15 +32,17 @@ The project fix is to bind the raw dispatch to the generated MakePy interface be
     hole_data.ThreadDepth = height_m
     hole_data.ThreadEndCondition = SW_WZD_THREAD_END_THROUGH_ALL
 
-The helper obtains the SOLIDWORKS type library from IFeatureManager.GetTypeInfo(), resolves the interface IID using the generated module's NamesToIIDMap, loads the generated interface class, and instantiates it with the COM dispatch. The generated wrapper performs QueryInterface and exposes the interface property setters.
+The helper does not call GetTypeInfo() on IFeatureManager or on the Hole Wizard definition. Some SOLIDWORKS proxies return DISP_E_BADINDEX for that call. Instead, it enumerates registered type libraries with pywin32 selecttlb.EnumTlbs(), filters the stable sldworks.tlb LIBID {83A33D31-27C5-11CE-BFD4-00400513BB57}, resolves the actual version from the registered TLB file, loads the MakePy module with gencache.EnsureModule(), resolves IWizardHoleFeatureData2 through NamesToIIDMap, then instantiates the generated interface class with the raw IDispatch. The generated wrapper performs QueryInterface and exposes the interface property setters.
 
 The CosmeticThreadType property is not set by this code. Although some language-specific signatures show a setter, SOLIDWORKS API Help explicitly states that Set is not implemented for this property in the referenced API versions. Its display behaviour follows the installed Hole Wizard/template defaults. Do not add a Python assignment to this property.
 
 If early binding fails:
-1. Run python -m win32com.client.makepy.
-2. Select SOLIDWORKS 2026 Type Library (22.0).
+1. Confirm that the installed SOLIDWORKS 2026 type library is registered in Windows.
+2. Run python -m win32com.client.makepy and select SOLIDWORKS 2026 Type Library.
 3. Confirm that MakePy completes without an error.
 4. Pull the latest feature/natural-language-cad branch and retry.
+
+The code reads the actual major/minor version from the registered sldworks.tlb file; do not hardcode the UI's displayed version string as a Python integer.
 
 Do not work around this exception by deleting all thread settings: ThreadDepth and ThreadEndCondition still need to be configured for a Through All tapped hole.
 
