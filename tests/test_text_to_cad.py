@@ -4,7 +4,12 @@ from src.solidworks_features import (
     SW_FM_FILLET,
     SW_CONST_RADIUS_FILLET,
     SW_FEATURE_FILLET_CIRCULAR,
+    SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER,
+    SW_FILLET_OVERFLOW_DEFAULT,
+    SW_END_COND_THROUGH_ALL,
     _call_member,
+    compute_four_corner_hole_centers_mm,
+    get_box_top_perimeter_edges,
     get_box_vertical_edges,
     is_vertical_extrusion_edge,
 )
@@ -37,10 +42,13 @@ class DummyModel:
         return self.bodies
 
 class TextToCADTests(unittest.TestCase):
-    def test_fillet_enum_values(self):
+    def test_enum_constants(self):
         self.assertEqual(SW_FM_FILLET, 1)
         self.assertEqual(SW_CONST_RADIUS_FILLET, 0)
         self.assertEqual(SW_FEATURE_FILLET_CIRCULAR, 0)
+        self.assertEqual(SW_FEATURE_FILLET_CONIC_RHO_ZERO_CHAMFER, 3)
+        self.assertEqual(SW_FILLET_OVERFLOW_DEFAULT, 0)
+        self.assertEqual(SW_END_COND_THROUGH_ALL, 1)
 
     def test_labelled_dimensions_and_features(self):
         plan = parse_description(
@@ -53,6 +61,23 @@ class TextToCADTests(unittest.TestCase):
         self.assertEqual(plan.features[0].parameters["target"], "four_vertical_outer_edges")
         self.assertEqual(plan.features[1].parameters["count"], 4)
         self.assertEqual(plan.features[1].parameters["diameter_mm"], 3.0)
+        self.assertEqual(plan.features[1].parameters["edge_offset_mm"], 10.0)
+
+    def test_chamfer_and_explicit_hole_offset(self):
+        plan = parse_description(
+            "Tao hop dai 100 mm rong 60 mm cao 30 mm, "
+            "vat canh 2 mm, khoet 4 lo phi 3 mm cach mep 8 mm"
+        )
+        self.assertEqual([f.kind for f in plan.features], ["chamfer", "holes"])
+        self.assertEqual(plan.features[0].parameters["distance_mm"], 2.0)
+        self.assertEqual(plan.features[0].parameters["target"], "four_top_perimeter_edges")
+        self.assertEqual(plan.features[1].parameters["edge_offset_mm"], 8.0)
+        self.assertFalse(plan.features[1].parameters["offset_was_defaulted"])
+
+    def test_chamfer_accented_phrase(self):
+        plan = parse_description("Tạo hộp dài 100 mm rộng 60 mm cao 30 mm, vát mép trên 2,5 mm")
+        self.assertEqual(plan.features[0].kind, "chamfer")
+        self.assertEqual(plan.features[0].parameters["distance_mm"], 2.5)
 
     def test_fillet_accented_phrase_and_decimal_comma(self):
         plan = parse_description(
@@ -60,6 +85,16 @@ class TextToCADTests(unittest.TestCase):
         )
         self.assertEqual(plan.features[0].kind, "fillet")
         self.assertEqual(plan.features[0].parameters["radius_mm"], 2.5)
+
+    def test_default_hole_offset_warns_user(self):
+        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 4 lo D3")
+        self.assertTrue(plan.features[0].parameters["offset_was_defaulted"])
+        self.assertTrue(any("10 mm" in warning for warning in plan.warnings))
+
+    def test_non_four_hole_count_is_preview_only(self):
+        plan = parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm, khoet 2 lo D3")
+        self.assertEqual(plan.features[0].parameters["layout"], "unspecified")
+        self.assertTrue(any("so lo khac" in warning for warning in plan.warnings))
 
     def test_dimension_tuple(self):
         plan = parse_description("Tao mot cai hop 100 x 60 x 30 mm")
@@ -87,31 +122,54 @@ class TextToCADTests(unittest.TestCase):
         with self.assertRaises(ParseError):
             parse_description("Tao hop dai 100 mm rong 60 mm cao 30 mm bo goc R30")
 
-    def test_vertical_edge_classifier(self):
+    def test_holes_must_clear_chamfer_and_fillet(self):
+        with self.assertRaises(ParseError):
+            parse_description(
+                "Tao hop dai 100 mm rong 60 mm cao 30 mm, "
+                "bo goc R5, khoet 4 lo D3 cach mep 5 mm"
+            )
+
+    def test_vertical_edge_classifier_accepts_shortened_vertical_edge(self):
         self.assertTrue(
-            is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.0, 0.0, 0.03), 30)
-        )
-        self.assertTrue(
-            is_vertical_extrusion_edge((0.1, 0.2, 0.03), (0.1, 0.2, 0.0), 30)
+            is_vertical_extrusion_edge((0.0, 0.0, 0.002), (0.0, 0.0, 0.028), 30)
         )
         self.assertFalse(
             is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.1, 0.0, 0.0), 30)
         )
-        self.assertFalse(
-            is_vertical_extrusion_edge((0.0, 0.0, 0.0), (0.0, 0.0, 0.02), 30)
-        )
 
     def test_get_exactly_four_vertical_box_edges(self):
         edges = [
-            DummyEdge((0.0, 0.0, 0.0), (0.0, 0.0, 0.03)),
-            DummyEdge((0.1, 0.0, 0.0), (0.1, 0.0, 0.03)),
-            DummyEdge((0.0, 0.06, 0.0), (0.0, 0.06, 0.03)),
-            DummyEdge((0.1, 0.06, 0.03), (0.1, 0.06, 0.0)),
+            DummyEdge((0.0, 0.0, 0.002), (0.0, 0.0, 0.028)),
+            DummyEdge((0.1, 0.0, 0.002), (0.1, 0.0, 0.028)),
+            DummyEdge((0.0, 0.06, 0.002), (0.0, 0.06, 0.028)),
+            DummyEdge((0.1, 0.06, 0.028), (0.1, 0.06, 0.002)),
             DummyEdge((0.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
         ]
         model = DummyModel([DummyBody(edges)])
-        result = get_box_vertical_edges(model, 30)
-        self.assertEqual(len(result), 4)
+        self.assertEqual(len(get_box_vertical_edges(model, 30)), 4)
+
+    def test_get_four_top_perimeter_edges(self):
+        edges = [
+            DummyEdge((0.0, 0.0, 0.03), (0.1, 0.0, 0.03)),
+            DummyEdge((0.1, 0.0, 0.03), (0.1, 0.06, 0.03)),
+            DummyEdge((0.1, 0.06, 0.03), (0.0, 0.06, 0.03)),
+            DummyEdge((0.0, 0.06, 0.03), (0.0, 0.0, 0.03)),
+            DummyEdge((0.0, 0.0, 0.0), (0.1, 0.0, 0.0)),
+        ]
+        model = DummyModel([DummyBody(edges)])
+        self.assertEqual(len(get_box_top_perimeter_edges(model, 30)), 4)
+
+    def test_four_corner_hole_centers(self):
+        self.assertEqual(
+            compute_four_corner_hole_centers_mm(100, 60, 3, 10, 5),
+            [(10, 10), (90, 10), (90, 50), (10, 50)],
+        )
+
+    def test_hole_layout_rejects_overlap_or_edge_collision(self):
+        with self.assertRaises(ValueError):
+            compute_four_corner_hole_centers_mm(100, 60, 10, 8, 0)
+        with self.assertRaises(ValueError):
+            compute_four_corner_hole_centers_mm(30, 20, 4, 10, 0)
 
     def test_zero_argument_com_member_wrapper(self):
         class Fake:
