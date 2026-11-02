@@ -56,7 +56,7 @@ Combined example:
 - Automatic hole creation currently supports exactly four holes.
 - The holes are placed symmetrically at (offset, offset), (length-offset, offset), (length-offset, width-offset), and (offset, width-offset) in the top sketch plane.
 - Each hole is a Through All cut.
-- If no edge offset is stated, the planner uses 10 mm and displays a warning. The user can explicitly say "cach mep 8 mm", for example.
+- If no edge offset is stated, the planner proposes 10 mm and displays a warning. The requested diameter, Chamfer and round-corner Fillet are checked against this offset. If 10 mm is insufficient, the planner rejects the request and asks for a larger explicit offset, for example "cach mep 12 mm".
 - The center offset must clear the hole radius and the larger of the requested Fillet radius or Chamfer distance.
 - Other counts/layouts are parsed but stay preview-only until positioning rules are implemented.
 
@@ -77,4 +77,4 @@ Run parser and geometry-plan tests without SOLIDWORKS:
 
 ## Verification boundary
 
-The parser, edge classifiers and hole-layout calculations have unit tests. The actual COM Chamfer, Fillet, face selection and Cut-Extrude calls require a real SOLIDWORKS 2026 session and have not been executed from this development environment.
+The parser, edge classifiers and hole-layout calculations have unit tests. Fillet was confirmed on the user’s SOLIDWORKS session. The newly added Chamfer, top-face selection and four-hole Cut-Extrude COM operations still require verification in the user’s SOLIDWORKS 2026 session; they have not been executed from this development environment.
